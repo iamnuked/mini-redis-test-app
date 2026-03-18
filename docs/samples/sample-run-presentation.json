@@ -1,0 +1,117 @@
+{
+  "run_id": "run_20260318_001",
+  "status": "completed",
+  "scenario": "detail_page",
+  "config": {
+    "scenario": "detail_page",
+    "iteration_count": 10,
+    "concurrency": 1,
+    "hit_rate_buckets": [0, 50, 100],
+    "ttl_seconds": 30,
+    "include_reference": true
+  },
+  "kpis": {
+    "db_avg_ms": 182.4,
+    "redis_avg_ms": 24.1,
+    "redis_hit_avg_ms": 12.7,
+    "redis_miss_avg_ms": 41.5,
+    "reference_avg_ms": 9.8,
+    "speedup_ratio": 7.57,
+    "improvement_percent": 86.79,
+    "break_even_hit_rate": 50,
+    "cache_hit_rate": 62.0,
+    "error_count": 0
+  },
+  "lane_summary": [
+    {
+      "mode": "db_only",
+      "label": "DB Only",
+      "request_count": 10,
+      "avg_duration_ms": 182.4,
+      "hit_count": 0,
+      "miss_count": 0,
+      "fallback_count": 0,
+      "error_count": 0
+    },
+    {
+      "mode": "cache_aside",
+      "label": "Redis + DB",
+      "request_count": 30,
+      "avg_duration_ms": 24.1,
+      "hit_count": 18,
+      "miss_count": 12,
+      "fallback_count": 0,
+      "error_count": 0
+    },
+    {
+      "mode": "redis_only_reference",
+      "label": "Redis Only Reference",
+      "request_count": 10,
+      "avg_duration_ms": 9.8,
+      "hit_count": 10,
+      "miss_count": 0,
+      "fallback_count": 0,
+      "error_count": 0
+    }
+  ],
+  "chart_series": {
+    "latency_comparison": [
+      {
+        "label": "DB Only Avg",
+        "value": 182.4
+      },
+      {
+        "label": "Redis Hit Avg",
+        "value": 12.7
+      },
+      {
+        "label": "Redis Miss Avg",
+        "value": 41.5
+      },
+      {
+        "label": "Redis Only Avg",
+        "value": 9.8
+      }
+    ],
+    "path_ratio": [
+      {
+        "label": "DB Only",
+        "value": 10
+      },
+      {
+        "label": "Redis Hit",
+        "value": 28
+      },
+      {
+        "label": "Redis Miss",
+        "value": 12
+      },
+      {
+        "label": "Redis Reference",
+        "value": 10
+      },
+      {
+        "label": "Fallback",
+        "value": 0
+      },
+      {
+        "label": "Error",
+        "value": 0
+      }
+    ],
+    "timeline_stage_totals": [
+      {
+        "label": "db_lookup",
+        "value": 392.4
+      },
+      {
+        "label": "redis_lookup",
+        "value": 74.5
+      },
+      {
+        "label": "writeback",
+        "value": 31.2
+      }
+    ]
+  }
+}

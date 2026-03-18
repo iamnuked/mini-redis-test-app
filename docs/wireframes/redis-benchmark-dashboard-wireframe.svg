@@ -89,7 +89,7 @@
     <text x="548" y="866" font-size="13" fill="white">속도 향상 요약</text>
     <text x="774" y="866" font-size="13">Redis 평균 지연</text>
     <text x="1000" y="866" font-size="13">Redis 적중률</text>
-    <text x="1226" y="866" font-size="13">손익분기 적중률</text>
+    <text x="1226" y="866" font-size="13">성능 역전 기준 적중률</text>
     <text x="96" y="905" font-size="28" font-weight="700">182 ms</text>
     <text x="322" y="905" font-size="28" font-weight="700">310 ms</text>
     <text x="548" y="895" font-size="34" font-weight="700" fill="white">7.6x</text>
@@ -114,7 +114,7 @@
     <text x="972" y="1032" font-size="12">35%</text>
     <text x="1088" y="1032" font-size="12">60%</text>
     <text x="1472" y="1032" font-size="12">100%</text>
-    <text x="964" y="995" font-size="12">손익분기점</text>
+    <text x="964" y="995" font-size="12">성능 역전 기준</text>
     <text x="96" y="1064" font-size="13">임계값 해석: 적중률이 35%를 넘는 구간부터 평균 지연시간이 DB 전용보다 낮아지고, 60% 이상에서는 격차가 크게 벌어짐</text>
 
     <text x="40" y="1128" font-size="18" font-weight="700">실험 설정 패널</text>

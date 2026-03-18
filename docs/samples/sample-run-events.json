@@ -1,0 +1,130 @@
+{
+  "run_id": "run_20260318_001",
+  "events": [
+    {
+      "event_id": "baseline-0-start",
+      "request_id": "baseline-0",
+      "timestamp": 0.0,
+      "mode": "db_only",
+      "event_type": "request_started",
+      "stage": "request",
+      "duration_ms": 0.0,
+      "metadata": {
+        "record_id": "0"
+      }
+    },
+    {
+      "event_id": "baseline-0-db-finish",
+      "request_id": "baseline-0",
+      "timestamp": 18.3,
+      "mode": "db_only",
+      "event_type": "db_query_completed",
+      "stage": "db_lookup",
+      "duration_ms": 18.3,
+      "metadata": {
+        "record_id": "0"
+      }
+    },
+    {
+      "event_id": "baseline-0-response",
+      "request_id": "baseline-0",
+      "timestamp": 18.3,
+      "mode": "db_only",
+      "event_type": "response_sent",
+      "stage": "response",
+      "duration_ms": 0.0,
+      "metadata": {
+        "total_duration_ms": 18.3
+      }
+    },
+    {
+      "event_id": "cache-50-1-start",
+      "request_id": "cache-50-1",
+      "timestamp": 0.0,
+      "mode": "cache_aside",
+      "event_type": "request_started",
+      "stage": "request",
+      "duration_ms": 0.0,
+      "metadata": {
+        "record_id": "50-1",
+        "bucket": 50
+      }
+    },
+    {
+      "event_id": "cache-50-1-miss",
+      "request_id": "cache-50-1",
+      "timestamp": 2.31,
+      "mode": "cache_aside",
+      "event_type": "cache_miss",
+      "stage": "redis_lookup",
+      "duration_ms": 2.31,
+      "metadata": {
+        "key": "benchmark:detail:50-1",
+        "bucket": 50
+      }
+    },
+    {
+      "event_id": "cache-50-1-db-finish",
+      "request_id": "cache-50-1",
+      "timestamp": 18.6,
+      "mode": "cache_aside",
+      "event_type": "db_query_completed",
+      "stage": "db_lookup",
+      "duration_ms": 16.29,
+      "metadata": {
+        "record_id": "50-1",
+        "bucket": 50
+      }
+    },
+    {
+      "event_id": "cache-50-1-cache-set",
+      "request_id": "cache-50-1",
+      "timestamp": 21.2,
+      "mode": "cache_aside",
+      "event_type": "cache_set",
+      "stage": "writeback",
+      "duration_ms": 2.6,
+      "metadata": {
+        "key": "benchmark:detail:50-1",
+        "ttl_seconds": 30
+      }
+    },
+    {
+      "event_id": "cache-50-1-response",
+      "request_id": "cache-50-1",
+      "timestamp": 21.2,
+      "mode": "cache_aside",
+      "event_type": "response_sent",
+      "stage": "response",
+      "duration_ms": 0.0,
+      "metadata": {
+        "total_duration_ms": 21.2,
+        "cache_status": "miss"
+      }
+    },
+    {
+      "event_id": "reference-0-start",
+      "request_id": "reference-0",
+      "timestamp": 0.0,
+      "mode": "redis_only_reference",
+      "event_type": "request_started",
+      "stage": "request",
+      "duration_ms": 0.0,
+      "metadata": {
+        "record_id": "reference-0"
+      }
+    },
+    {
+      "event_id": "reference-0-hit",
+      "request_id": "reference-0",
+      "timestamp": 1.52,
+      "mode": "redis_only_reference",
+      "event_type": "cache_hit",
+      "stage": "redis_lookup",
+      "duration_ms": 1.52,
+      "metadata": {
+        "key": "benchmark:detail:reference-0"
+      }
+    }
+  ]
+}

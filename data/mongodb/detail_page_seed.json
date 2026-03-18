@@ -1,0 +1,37 @@
+[
+  {
+    "record_id": "0",
+    "title": "Detail 0",
+    "body": "Seed body for record 0"
+  },
+  {
+    "record_id": "1",
+    "title": "Detail 1",
+    "body": "Seed body for record 1"
+  },
+  {
+    "record_id": "2",
+    "title": "Detail 2",
+    "body": "Seed body for record 2"
+  },
+  {
+    "record_id": "50-0",
+    "title": "Bucket 50 Record 0",
+    "body": "Seed body for bucket 50 record 0"
+  },
+  {
+    "record_id": "50-1",
+    "title": "Bucket 50 Record 1",
+    "body": "Seed body for bucket 50 record 1"
+  },
+  {
+    "record_id": "100-0",
+    "title": "Bucket 100 Record 0",
+    "body": "Seed body for bucket 100 record 0"
+  },
+  {
+    "record_id": "100-1",
+    "title": "Bucket 100 Record 1",
+    "body": "Seed body for bucket 100 record 1"
+  }
+]

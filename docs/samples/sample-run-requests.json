@@ -1,0 +1,68 @@
+{
+  "run_id": "run_20260318_001",
+  "requests": [
+    {
+      "request_id": "baseline-0",
+      "mode": "db_only",
+      "started_at_ms": 0.0,
+      "finished_at_ms": 18.3,
+      "total_duration_ms": 18.3,
+      "cache_status": "db_only",
+      "path_summary": "App -> DB -> Response",
+      "has_error": false,
+      "stage_durations": {
+        "request": 0.0,
+        "db_lookup": 18.3,
+        "response": 0.0
+      },
+      "event_count": 3,
+      "events": [
+        {
+          "event_id": "baseline-0-start",
+          "request_id": "baseline-0",
+          "timestamp": 0.0,
+          "mode": "db_only",
+          "event_type": "request_started",
+          "stage": "request",
+          "duration_ms": 0.0,
+          "metadata": {
+            "record_id": "0"
+          }
+        }
+      ]
+    },
+    {
+      "request_id": "cache-50-1",
+      "mode": "cache_aside",
+      "started_at_ms": 0.0,
+      "finished_at_ms": 21.2,
+      "total_duration_ms": 21.2,
+      "cache_status": "miss",
+      "path_summary": "App -> Redis -> DB -> Redis -> Response",
+      "has_error": false,
+      "stage_durations": {
+        "request": 0.0,
+        "redis_lookup": 2.31,
+        "db_lookup": 16.29,
+        "writeback": 2.6,
+        "response": 0.0
+      },
+      "event_count": 4,
+      "events": [
+        {
+          "event_id": "cache-50-1-start",
+          "request_id": "cache-50-1",
+          "timestamp": 0.0,
+          "mode": "cache_aside",
+          "event_type": "request_started",
+          "stage": "request",
+          "duration_ms": 0.0,
+          "metadata": {
+            "record_id": "50-1",
+            "bucket": 50
+          }
+        }
+      ]
+    }
+  ]
+}

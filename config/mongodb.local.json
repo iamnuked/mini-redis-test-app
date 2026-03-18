@@ -1,0 +1,8 @@
+{
+  "baseline_backend": "mongodb",
+  "mongodb_uri": "mongodb://127.0.0.1:27017",
+  "mongodb_db_name": "mini_redis_benchmark",
+  "mongodb_collection": "detail_pages",
+  "mongodb_seed_file": "data/mongodb/detail_page_seed.json",
+  "mongodb_connect_timeout_ms": 1000
+}

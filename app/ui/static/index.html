@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="benchmark-api-base" content="/api">
+    <title>미니 레디스 벤치마크 랩</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div class="page-shell">
+      <div class="backdrop backdrop-one"></div>
+      <div class="backdrop backdrop-two"></div>
+
+      <header class="hero panel">
+        <div class="hero-copy">
+          <p class="eyebrow">미니 레디스 벤치마크 랩</p>
+          <h1>감이 아니라 흐름과 숫자로 비교합니다.</h1>
+          <p class="hero-text">
+            DB 전용, 캐시 어사이드, 선택형 Redis 기준선 경로를 같은 화면에서 비교하는 대시보드입니다.
+            현재 로컬 벤치마크 API에 연결되도록 설계되어 있어서, 추측 대신 실제 run 상태와 이벤트, 로그를 바로 볼 수 있습니다.
+          </p>
+          <section class="hero-spotlight" aria-label="현재 실행 결론">
+            <div class="hero-spotlight-copy">
+              <p class="signal-label">발표 포인트</p>
+              <h2 id="hero-spotlight-title">결과 결론을 준비하는 중입니다.</h2>
+              <p id="hero-spotlight-detail">
+                run을 선택하거나 새로 실행하면 지금 조건에서 어떤 경로가 우세한지 이 영역에서 먼저 요약합니다.
+              </p>
+            </div>
+            <div class="hero-spotlight-metrics">
+              <article class="hero-spotlight-metric">
+                <span>DB 기준</span>
+                <strong id="hero-db-avg">--</strong>
+              </article>
+              <article class="hero-spotlight-metric">
+                <span>Redis 적중</span>
+                <strong id="hero-cache-avg">--</strong>
+              </article>
+              <article class="hero-spotlight-metric hero-spotlight-metric-accent">
+                <span>현재 상태</span>
+                <strong id="hero-live-status">대기</strong>
+              </article>
+            </div>
+          </section>
+          <div class="signal-strip" aria-label="대시보드 기능">
+            <article class="signal-tile">
+              <span class="signal-label">레인 보드</span>
+              <strong>요청 순서 기준 흐름 재생</strong>
+            </article>
+            <article class="signal-tile">
+              <span class="signal-label">요약 모델</span>
+              <strong>DB / Redis 적중 / Redis 미스 분리</strong>
+            </article>
+            <article class="signal-tile">
+              <span class="signal-label">핵심 그래프</span>
+              <strong>첫 비교 그래프에서 바로 설명</strong>
+            </article>
+          </div>
+          <div class="hero-badges">
+            <span class="badge">DB 전용 vs 캐시 어사이드</span>
+            <span class="badge">클라이언트 재생</span>
+            <span class="badge">이벤트 기반 요청 상세</span>
+          </div>
+        </div>
+
+        <div class="hero-side">
+          <article class="mini-card">
+            <div class="mini-card-label">미니 레디스 상태</div>
+            <div class="mini-card-value" id="health-status">확인 중</div>
+            <div class="mini-card-meta" id="health-meta">로컬 컨트롤러 연결 준비 중</div>
+          </article>
+          <article class="mini-card">
+            <div class="mini-card-label">현재 Run</div>
+            <div class="mini-card-value" id="run-status">대기</div>
+            <div class="mini-card-meta" id="run-meta">선택된 run이 없습니다</div>
+          </article>
+          <article class="mini-card connection-card">
+            <div class="mini-card-label">API 기준 경로</div>
+            <div class="mini-card-value" id="api-base-value">/api</div>
+            <div class="mini-card-meta" id="api-base-meta">같은 origin 모드</div>
+          </article>
+        </div>
+      </header>
+
+      <main class="dashboard-grid">
+        <section class="panel controls-panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">실행 제어</p>
+              <h2>벤치마크 실행</h2>
+            </div>
+            <button class="ghost-button" id="refresh-all-button" type="button">새로고침</button>
+          </div>
+
+          <form id="run-form" class="control-form">
+            <label class="field">
+              <span>시나리오</span>
+              <select name="scenario">
+                  <option value="detail_page">상세 페이지</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>반복 횟수</span>
+              <input name="iteration_count" type="number" min="1" value="10">
+            </label>
+
+            <label class="field">
+              <span>동시성</span>
+              <input name="concurrency" type="number" min="1" value="1">
+            </label>
+
+            <label class="field">
+              <span>TTL(초)</span>
+              <input name="ttl_seconds" type="number" min="1" value="30">
+            </label>
+
+            <label class="field field-wide">
+              <span>적중률 버킷</span>
+              <input name="hit_rate_buckets" type="text" value="0, 50, 100" placeholder="0, 50, 100">
+            </label>
+
+            <label class="checkbox-field field-wide">
+              <input name="include_reference" type="checkbox">
+              <span>Redis 전용 기준선 레인 포함</span>
+            </label>
+
+            <div class="control-actions field-wide">
+              <button class="primary-button" id="run-button" type="submit">벤치마크 실행</button>
+              <button class="secondary-button" id="replay-button" type="button">흐름 재생</button>
+            </div>
+          </form>
+
+          <div class="playback-strip">
+            <div>
+              <div class="panel-kicker">재생</div>
+              <div class="playback-status" id="playback-status">실시간 모드</div>
+            </div>
+            <label class="field compact-field">
+              <span>속도</span>
+              <select id="playback-speed">
+                <option value="1">1x</option>
+                <option value="1.5">1.5x</option>
+                <option value="2" selected>2x</option>
+                <option value="4">4x</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="scenario-note" id="scenario-note">
+            현재 v1 runner는 동시성 값을 메타데이터로만 저장하고 실제 실행은 순차 처리합니다.
+            지금은 가짜 병렬 연출보다 실제 이벤트 흐름을 정확히 연결하는 데 집중합니다.
+          </div>
+        </section>
+
+        <section class="panel summary-panel supporting-panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">요약</p>
+              <h2>Run 요약</h2>
+            </div>
+          </div>
+
+          <div class="summary-copy">
+            <p id="summary-headline">run을 선택하거나 새로 실행하면 보드가 채워집니다.</p>
+            <p id="summary-detail">
+              데이터가 들어오면 현재 경로 분포, 성능 역전 기준 적중률, 캐시 경로가 실제로 이득을 주는지 이 영역에서 바로 설명합니다.
+            </p>
+          </div>
+
+          <div class="summary-meta-grid">
+            <article class="summary-meta-card">
+              <span class="meta-label">시나리오</span>
+              <strong id="meta-scenario">상세 페이지</strong>
+            </article>
+            <article class="summary-meta-card">
+              <span class="meta-label">설정</span>
+              <strong id="meta-config">10회 / 동시성 1 / ttl 30초</strong>
+            </article>
+            <article class="summary-meta-card">
+              <span class="meta-label">재생 기준</span>
+              <strong id="meta-replay-source">events[] 순서</strong>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel kpi-panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">KPI 보드</p>
+              <h2>핵심 성능 지표</h2>
+            </div>
+          </div>
+
+          <div class="kpi-grid" id="kpi-grid">
+            <article class="kpi-card accent-warm">
+              <span class="kpi-label">DB 평균</span>
+              <strong class="kpi-value" data-kpi="db_avg_ms">--</strong>
+              <span class="kpi-meta">기준 경로</span>
+            </article>
+            <article class="kpi-card accent-cool">
+              <span class="kpi-label">Redis 적중 평균</span>
+              <strong class="kpi-value" data-kpi="redis_hit_avg_ms">--</strong>
+              <span class="kpi-meta">Redis만 다녀온 요청</span>
+            </article>
+            <article class="kpi-card accent-cool">
+              <span class="kpi-label">Redis 미스 평균</span>
+              <strong class="kpi-value" data-kpi="redis_miss_avg_ms">--</strong>
+              <span class="kpi-meta">DB fallback 포함 경로</span>
+            </article>
+            <article class="kpi-card accent-pop">
+              <span class="kpi-label">속도 향상</span>
+              <strong class="kpi-value" data-kpi="speedup_ratio">--</strong>
+              <span class="kpi-meta">DB 평균 / 전체 캐시 평균</span>
+            </article>
+            <article class="kpi-card accent-neutral">
+              <span class="kpi-label">성능 역전 기준</span>
+              <strong class="kpi-value" data-kpi="break_even_hit_rate">--</strong>
+              <span class="kpi-meta">버킷 기준값</span>
+            </article>
+            <article class="kpi-card accent-green">
+              <span class="kpi-label">캐시 적중률</span>
+              <strong class="kpi-value" data-kpi="cache_hit_rate">--</strong>
+              <span class="kpi-meta">실측 적중 비율</span>
+            </article>
+            <article class="kpi-card accent-red">
+              <span class="kpi-label">오류 수</span>
+              <strong class="kpi-value" data-kpi="error_count">--</strong>
+              <span class="kpi-meta">폴백 압력</span>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel chart-panel primary-chart-panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">핵심 비교</p>
+              <h2>DB / Redis 적중 / Redis 미스</h2>
+            </div>
+          </div>
+          <div id="latency-chart" class="chart-frame"></div>
+        </section>
+
+        <section class="panel flow-panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">흐름 레인</p>
+              <h2>요청 경로 보드</h2>
+            </div>
+            <div class="panel-meta" id="flow-meta">이벤트 0개</div>
+          </div>
+
+          <div class="legend-row">
+            <span class="legend-pill warm">DB 전용</span>
+            <span class="legend-pill green">Redis 적중</span>
+            <span class="legend-pill blue">Redis 미스</span>
+            <span class="legend-pill orange">폴백</span>
+            <span class="legend-pill red">오류</span>
+          </div>
+
+          <div id="lane-summary-grid" class="lane-summary-grid"></div>
+
+          <div class="flow-timeline-panel">
+            <div class="flow-timeline-head">
+              <strong>시간축 흐름 그래프</strong>
+              <span>x축은 요청 상대 시간, y축은 단계 흐름입니다</span>
+            </div>
+            <div id="flow-timeline" class="flow-timeline-frame"></div>
+          </div>
+
+          <div id="flow-board" class="flow-board empty-board">
+            <div class="empty-state">
+              <h3>요청 이벤트가 아직 없습니다</h3>
+              <p>벤치마크를 실행하거나 이전 run을 선택하면 레인이 활성화됩니다.</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel chart-panel supporting-panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">경로 분포</p>
+              <h2>요청 분포</h2>
+            </div>
+          </div>
+          <div id="bucket-chart" class="chart-frame"></div>
+        </section>
+
+        <section class="panel runs-panel supporting-panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Run 기록</p>
+              <h2>최근 run</h2>
+            </div>
+          </div>
+          <div id="runs-list" class="runs-list"></div>
+        </section>
+
+        <section class="panel log-panel supporting-panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">실행 로그</p>
+              <h2>라이프사이클 콘솔</h2>
+            </div>
+          </div>
+          <div id="logs-list" class="log-list"></div>
+        </section>
+
+        <section class="panel detail-panel supporting-panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">요청 상세</p>
+              <h2>선택된 요청</h2>
+            </div>
+          </div>
+          <div id="request-detail" class="detail-card">
+            <div class="empty-state compact">
+              <h3>선택된 요청이 없습니다</h3>
+              <p>레인 보드의 토큰을 누르면 경로, 소요 시간, 캐시 상태를 볼 수 있습니다.</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

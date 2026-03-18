@@ -204,6 +204,41 @@ start_backend() {
   wait_for_port 127.0.0.1 8000 "benchmark backend"
 }
 
+autostart_benchmark_run() {
+  local api_url="http://127.0.0.1:8000/api/benchmark-runs"
+  local payload='{
+    "scenario":"detail_page",
+    "iteration_count":10,
+    "concurrency":1,
+    "ttl_seconds":30,
+    "hit_rate_buckets":[0,50,100],
+    "include_reference":false
+  }'
+
+  local resp_path="$TMP_DIR/autostart_benchmark_run_response.json"
+  : > "$resp_path"
+
+  local http_code
+  http_code="$(
+    curl -sS -o "$resp_path" -w "%{http_code}" \
+      -X POST "$api_url" \
+      -H "Content-Type: application/json" \
+      --data "$payload" || true
+  )"
+
+  echo "[autostart] POST /api/benchmark-runs -> HTTP ${http_code:-unknown}"
+  if [[ "$http_code" == "201" ]]; then
+    cat "$resp_path"
+  elif [[ "$http_code" == "409" ]]; then
+    echo "[autostart] 이미 실행 중인 run이 있어 자동 실행을 건너뜁니다."
+  else
+    # 실패 원인을 확인하기 위해 response body를 함께 출력합니다.
+    if [[ -s "$resp_path" ]]; then
+      cat "$resp_path"
+    fi
+  fi
+}
+
 print_summary() {
   cat <<EOF
 [done] demo stack is ready
@@ -221,4 +256,5 @@ start_mongodb
 seed_mongodb
 start_mini_redis
 start_backend
+autostart_benchmark_run
 print_summary

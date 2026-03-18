@@ -69,10 +69,74 @@ window.addEventListener("DOMContentLoaded", () => {
 async function initializeDashboard() {
   await ensureReachableApiBase({ force: true });
   await Promise.all([refreshHealth(), refreshRuns()]);
-  if (state.runs.length > 0) {
-    await selectRun(state.runs[0].run_id);
-  } else {
+  const activeRun = state.runs.find((run) => ACTIVE_RUN_STATUSES.has(run.status)) || null;
+  if (activeRun) {
+    await selectRun(activeRun.run_id);
+    return;
+  }
+
+  // 진행 중인 run이 없으면 첫 화면에서 바로 benchmark를 시작합니다.
+  await maybeAutoStartRunFromUi();
+}
+
+async function maybeAutoStartRunFromUi() {
+  // cacheElements() 이후에만 호출됩니다.
+  const formData = new FormData(elements.runForm);
+  const payload = {
+    scenario: String(formData.get("scenario") || "detail_page"),
+    iteration_count: Number(formData.get("iteration_count") || 10),
+    concurrency: Number(formData.get("concurrency") || 1),
+    ttl_seconds: Number(formData.get("ttl_seconds") || 30),
+    hit_rate_buckets: parseBucketInput(String(formData.get("hit_rate_buckets") || "")),
+    include_reference: formData.get("include_reference") === "on",
+  };
+
+  if (payload.hit_rate_buckets.length === 0) {
+    setScenarioNote("");
     renderAll();
+    return;
+  }
+
+  let response;
+  try {
+    setScenarioNote("자동 실행을 시작합니다.");
+    stopReplay({ preserveFrame: false });
+    response = await apiFetch("/api/benchmark-runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    const message = error?.message || String(error);
+    const isActiveRunConflict = message.includes("another benchmark run is already active");
+
+    // 이미 누군가 run을 시작한 상태면 최신 run을 선택하고 자동 시작은 중단합니다.
+    try {
+      await refreshRuns();
+      if (state.runs.length > 0) {
+        await selectRun(state.runs[0].run_id);
+      } else {
+        renderAll();
+      }
+    } finally {
+      setScenarioNote(isActiveRunConflict ? "" : message);
+    }
+    return;
+  }
+
+  try {
+    if (response?.run_id) {
+      await selectRun(response.run_id);
+    } else {
+      await refreshRuns();
+      if (state.runs.length > 0) {
+        await selectRun(state.runs[0].run_id);
+      } else {
+        renderAll();
+      }
+    }
+  } finally {
+    setScenarioNote("");
   }
 }
 
@@ -121,19 +185,8 @@ function hydrateRuntimeContext() {
   state.apiBaseResolved = false;
   state.bundleBase = runtime.bundleBase;
 
-  const fallbackNote = describeApiFallbackNote();
-  if (isSameOriginApi()) {
-    setScenarioNote(
-      `번들 경로 ${state.bundleBase}에서 같은 origin API 기준 경로 ${state.apiBase}를 사용 중입니다.` +
-      `${fallbackNote}`,
-    );
-    return;
-  }
-
-  setScenarioNote(
-    `번들 경로 ${state.bundleBase}에서 교차 origin API 기준 경로 ${state.apiBase}를 사용 중입니다. ` +
-    `이 방식은 CORS 또는 리버스 프록시가 있어야 정상 동작합니다.${fallbackNote}`,
-  );
+  // Connection 상태는 오른쪽 mini-card에서 이미 안내합니다.
+  // 초기 로딩 시에는 시나리오 노트가 화면 상단을 과하게 밀지 않도록 숨깁니다.
 }
 
 function bindEvents() {
@@ -1907,6 +1960,13 @@ function emptyChartMarkup(title, description) {
 }
 
 function setScenarioNote(message) {
+  if (!message) {
+    elements.scenarioNote.hidden = true;
+    elements.scenarioNote.textContent = "";
+    return;
+  }
+
+  elements.scenarioNote.hidden = false;
   elements.scenarioNote.textContent = message;
 }
 

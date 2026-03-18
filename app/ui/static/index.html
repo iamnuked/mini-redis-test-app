@@ -15,11 +15,6 @@
       <header class="hero panel">
         <div class="hero-copy">
           <p class="eyebrow">미니 레디스 벤치마크 랩</p>
-          <h1>감이 아니라 흐름과 숫자로 비교합니다.</h1>
-          <p class="hero-text">
-            DB 전용, 캐시 어사이드, 선택형 Redis 기준선 경로를 같은 화면에서 비교하는 대시보드입니다.
-            현재 로컬 벤치마크 API에 연결되도록 설계되어 있어서, 추측 대신 실제 run 상태와 이벤트, 로그를 바로 볼 수 있습니다.
-          </p>
           <section class="hero-spotlight" aria-label="현재 실행 결론">
             <div class="hero-spotlight-copy">
               <p class="signal-label">발표 포인트</p>
@@ -43,25 +38,6 @@
               </article>
             </div>
           </section>
-          <div class="signal-strip" aria-label="대시보드 기능">
-            <article class="signal-tile">
-              <span class="signal-label">레인 보드</span>
-              <strong>요청 순서 기준 흐름 재생</strong>
-            </article>
-            <article class="signal-tile">
-              <span class="signal-label">요약 모델</span>
-              <strong>DB / Redis 적중 / Redis 미스 분리</strong>
-            </article>
-            <article class="signal-tile">
-              <span class="signal-label">핵심 그래프</span>
-              <strong>첫 비교 그래프에서 바로 설명</strong>
-            </article>
-          </div>
-          <div class="hero-badges">
-            <span class="badge">DB 전용 vs 캐시 어사이드</span>
-            <span class="badge">클라이언트 재생</span>
-            <span class="badge">이벤트 기반 요청 상세</span>
-          </div>
         </div>
 
         <div class="hero-side">
@@ -148,10 +124,7 @@
             </label>
           </div>
 
-          <div class="scenario-note" id="scenario-note">
-            현재 v1 runner는 동시성 값을 메타데이터로만 저장하고 실제 실행은 순차 처리합니다.
-            지금은 가짜 병렬 연출보다 실제 이벤트 흐름을 정확히 연결하는 데 집중합니다.
-          </div>
+          <div class="scenario-note" id="scenario-note" hidden></div>
         </section>
 
         <section class="panel summary-panel supporting-panel">

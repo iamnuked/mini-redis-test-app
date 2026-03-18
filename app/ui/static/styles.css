@@ -71,7 +71,7 @@ button {
   position: relative;
   max-width: 1540px;
   margin: 0 auto;
-  padding: 32px;
+  padding: 24px;
   overflow: hidden;
 }
 
@@ -125,9 +125,9 @@ button {
 .hero {
   display: grid;
   grid-template-columns: minmax(0, 1.7fr) minmax(300px, 0.9fr);
-  gap: 24px;
-  padding: 34px;
-  margin-bottom: 24px;
+  gap: 18px;
+  padding: 24px;
+  margin-bottom: 18px;
   background:
     radial-gradient(circle at top right, rgba(11, 122, 124, 0.18), transparent 28%),
     radial-gradient(circle at 15% 15%, rgba(235, 110, 47, 0.16), transparent 24%),
@@ -189,8 +189,8 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.95fr);
   gap: 18px;
-  margin-top: 24px;
-  padding: 22px;
+  margin-top: 14px;
+  padding: 18px;
   border-radius: 24px;
   background:
     radial-gradient(circle at top right, rgba(28, 91, 214, 0.16), transparent 34%),

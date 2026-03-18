@@ -1,5 +1,6 @@
 import socket
 
+from internal.guard.resource_guard import ResourceGuard
 from internal.observability.logger import Logger
 from internal.observability.metrics import Metrics
 from internal.protocol.resp.request_decoder import RespRequestDecoder
@@ -14,6 +15,7 @@ class SessionHandler:
         request_decoder: RespRequestDecoder,
         command_service: CommandService,
         response_encoder: RespResponseEncoder,
+        resource_guard: ResourceGuard,
         metrics: Metrics,
         logger: Logger | None = None,
         read_size: int = 4096,
@@ -22,6 +24,7 @@ class SessionHandler:
         self._request_decoder = request_decoder
         self._command_service = command_service
         self._response_encoder = response_encoder
+        self._resource_guard = resource_guard
         self._metrics = metrics
         self._logger = logger or Logger()
         self._read_size = read_size
@@ -30,6 +33,10 @@ class SessionHandler:
         try:
             request_bytes = self._read_request()
             if not request_bytes:
+                return
+            if not self._resource_guard.is_request_size_allowed(len(request_bytes)):
+                self._metrics.increment_errors()
+                self._logger.error("request size limit exceeded")
                 return
 
             self._metrics.increment_requests()

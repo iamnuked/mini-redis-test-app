@@ -1,10 +1,15 @@
 import socket
 
+from internal.clock.system_clock import SystemClock
 from internal.config.runtime_config import RuntimeConfig
+from internal.guard.limits import ResourceLimits
+from internal.guard.resource_guard import ResourceGuard
 from internal.observability.logger import Logger
 from internal.observability.metrics import Metrics
 from internal.protocol.resp.request_decoder import RespRequestDecoder
 from internal.protocol.resp.response_encoder import RespResponseEncoder
+from internal.repository.in_memory_store import InMemoryStoreRepository
+from internal.repository.in_memory_ttl import InMemoryTtlRepository
 from internal.server.session_handler import SessionHandler
 from internal.server.shutdown import ShutdownManager
 from internal.service.command_service import CommandService
@@ -23,6 +28,22 @@ class MiniRedisServer:
         self._metrics = metrics or Metrics()
         self._shutdown_manager = shutdown_manager or ShutdownManager()
         self._server_socket: socket.socket | None = None
+        self._clock = SystemClock()
+        self._store_repository = InMemoryStoreRepository()
+        self._ttl_repository = InMemoryTtlRepository()
+        self._resource_limits = ResourceLimits(
+            max_connections=self._config.max_connections,
+            max_request_size_bytes=self._config.max_request_size_bytes,
+            max_array_items=self._config.max_array_items,
+            max_resp_depth=self._config.max_resp_depth,
+            max_blob_size_bytes=self._config.max_blob_size_bytes,
+        )
+        self._resource_guard = ResourceGuard(self._resource_limits)
+        self._command_service = CommandService(
+            clock=self._clock,
+            store_repository=self._store_repository,
+            ttl_repository=self._ttl_repository,
+        )
 
     def run(self) -> None:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
@@ -48,6 +69,13 @@ class MiniRedisServer:
                         raise
 
                     with client_socket:
+                        if not self._resource_guard.is_connection_allowed(
+                            self._metrics.active_connections
+                        ):
+                            self._metrics.increment_errors()
+                            self._logger.error("connection limit exceeded")
+                            continue
+
                         self._metrics.increment_connections()
                         self._metrics.increment_active_connections()
                         self._logger.info(
@@ -56,8 +84,9 @@ class MiniRedisServer:
                         handler = SessionHandler(
                             client_socket=client_socket,
                             request_decoder=RespRequestDecoder(),
-                            command_service=CommandService(),
+                            command_service=self._command_service,
                             response_encoder=RespResponseEncoder(),
+                            resource_guard=self._resource_guard,
                             metrics=self._metrics,
                             logger=self._logger,
                             read_size=self._config.max_request_size_bytes,

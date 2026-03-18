@@ -5,6 +5,9 @@ class InMemoryStoreRepository(StoreRepository):
     def __init__(self) -> None:
         self._store: dict[str, str] = {}
 
+    def list_keys(self) -> list[str]:
+        return list(self._store.keys())
+
     def get(self, key: str) -> str | None:
         return self._store.get(key)
 

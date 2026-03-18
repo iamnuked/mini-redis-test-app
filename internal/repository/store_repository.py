@@ -3,6 +3,10 @@ from abc import ABC, abstractmethod
 
 class StoreRepository(ABC):
     @abstractmethod
+    def list_keys(self) -> list[str]:
+        raise NotImplementedError
+
+    @abstractmethod
     def get(self, key: str) -> str | None:
         raise NotImplementedError
 

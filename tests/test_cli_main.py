@@ -253,3 +253,61 @@ class CliMainTest(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "dictionary"):
             self.cli_main.render_response(response)
+
+    def test_repl_executes_multiple_commands_until_quit(self) -> None:
+        stdin = io.StringIO("GET mykey\nSET mykey hello\nquit\n")
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        sockets = [
+            FakeSocket(HELLO_RESPONSE),
+            FakeSocket(b"$5\r\nvalue\r\n"),
+            FakeSocket(HELLO_RESPONSE),
+            FakeSocket(b"+OK\r\n"),
+        ]
+        connection_factory = FakeConnectionFactory(sockets)
+
+        with mock.patch.object(
+            self.cli_main.socket,
+            "create_connection",
+            side_effect=connection_factory,
+        ):
+            exit_code = self.cli_main.main([], stdin=stdin, stdout=stdout, stderr=stderr)
+
+        self.assertEqual(exit_code, defaults.CLI_EXIT_SUCCESS)
+        self.assertEqual(
+            stdout.getvalue(),
+            "mini-redis> value\nmini-redis> OK\nmini-redis> ",
+        )
+        self.assertEqual(stderr.getvalue(), "")
+
+    def test_repl_skips_empty_lines_and_continues_after_server_error(self) -> None:
+        stdin = io.StringIO("\nNOPE\nquit\n")
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        sockets = [
+            FakeSocket(HELLO_RESPONSE),
+            FakeSocket(b"-ERR unsupported command\r\n"),
+        ]
+        connection_factory = FakeConnectionFactory(sockets)
+
+        with mock.patch.object(
+            self.cli_main.socket,
+            "create_connection",
+            side_effect=connection_factory,
+        ):
+            exit_code = self.cli_main.main([], stdin=stdin, stdout=stdout, stderr=stderr)
+
+        self.assertEqual(exit_code, defaults.CLI_EXIT_SUCCESS)
+        self.assertEqual(stdout.getvalue(), "mini-redis> mini-redis> mini-redis> ")
+        self.assertEqual(stderr.getvalue(), "ERR unsupported command\n")
+
+    def test_repl_reports_invalid_quoted_input_and_keeps_prompt(self) -> None:
+        stdin = io.StringIO('GET "unterminated\nquit\n')
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        exit_code = self.cli_main.main([], stdin=stdin, stdout=stdout, stderr=stderr)
+
+        self.assertEqual(exit_code, defaults.CLI_EXIT_SUCCESS)
+        self.assertEqual(stdout.getvalue(), "mini-redis> mini-redis> ")
+        self.assertIn("error:", stderr.getvalue())

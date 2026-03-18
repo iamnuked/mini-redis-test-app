@@ -1,0 +1,172 @@
+<svg width="1600" height="1560" viewBox="0 0 1600 1560" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1600" height="1560" fill="#F5F5F5"/>
+  <g font-family="'Apple SD Gothic Neo', 'Malgun Gothic', Arial, Helvetica, sans-serif" fill="#111111">
+    <rect x="40" y="32" width="1520" height="80" rx="20" fill="white" stroke="#111111" stroke-width="2"/>
+    <text x="72" y="68" font-size="20" font-weight="700">Redis 성능 비교 랩</text>
+    <text x="72" y="92" font-size="14">DB 전용과 Redis + DB 환경을 한 화면에서 비교하는 서비스 성능 실험 대시보드</text>
+    <rect x="1180" y="50" width="110" height="42" rx="12" fill="#F5F5F5" stroke="#111111" stroke-width="2"/>
+    <rect x="1306" y="50" width="110" height="42" rx="12" fill="#F5F5F5" stroke="#111111" stroke-width="2"/>
+    <rect x="1432" y="50" width="96" height="42" rx="12" fill="#111111"/>
+    <text x="1212" y="76" font-size="14">시나리오</text>
+    <text x="1338" y="76" font-size="14">기록</text>
+    <text x="1456" y="76" font-size="14" fill="white">실행</text>
+
+    <rect x="40" y="132" width="1520" height="92" rx="20" fill="white" stroke="#111111" stroke-width="2"/>
+    <text x="72" y="168" font-size="18" font-weight="700">현재 데모 시나리오</text>
+    <text x="72" y="194" font-size="14">검색 자동완성, 인기 게시글, 상세 미리보기, 실시간 성능 비교가 함께 보이는 커뮤니티 피드 화면</text>
+    <rect x="1040" y="154" width="128" height="44" rx="12" fill="#F5F5F5" stroke="#111111" stroke-width="2"/>
+    <rect x="1184" y="154" width="128" height="44" rx="12" fill="#F5F5F5" stroke="#111111" stroke-width="2"/>
+    <rect x="1328" y="154" width="96" height="44" rx="12" fill="#F5F5F5" stroke="#111111" stroke-width="2"/>
+    <rect x="1440" y="154" width="88" height="44" rx="12" fill="#F5F5F5" stroke="#111111" stroke-width="2"/>
+    <text x="1072" y="181" font-size="14">피드 화면</text>
+    <text x="1208" y="181" font-size="14">검색 부하</text>
+    <text x="1352" y="181" font-size="14">웜 캐시</text>
+    <text x="1458" y="181" font-size="14">50 요청</text>
+
+    <text x="40" y="264" font-size="18" font-weight="700">실시간 서비스 미리보기</text>
+
+    <rect x="40" y="284" width="744" height="454" rx="24" fill="white" stroke="#111111" stroke-width="2"/>
+    <rect x="816" y="284" width="744" height="454" rx="24" fill="white" stroke="#111111" stroke-width="2"/>
+
+    <text x="72" y="326" font-size="22" font-weight="700">DB 전용</text>
+    <text x="848" y="326" font-size="22" font-weight="700">Redis + DB</text>
+    <rect x="630" y="302" width="120" height="36" rx="10" fill="#F5F5F5" stroke="#111111" stroke-width="2"/>
+    <rect x="1406" y="302" width="120" height="36" rx="10" fill="#F5F5F5" stroke="#111111" stroke-width="2"/>
+    <text x="655" y="325" font-size="13">콜드 캐시</text>
+    <text x="1430" y="325" font-size="13">웜 캐시</text>
+
+    <rect x="72" y="352" width="680" height="54" rx="14" fill="#F5F5F5" stroke="#111111" stroke-width="2"/>
+    <rect x="848" y="352" width="680" height="54" rx="14" fill="#F5F5F5" stroke="#111111" stroke-width="2"/>
+    <text x="96" y="385" font-size="14">게시글, 태그, 사용자 검색</text>
+    <text x="872" y="385" font-size="14">게시글, 태그, 사용자 검색</text>
+
+    <rect x="72" y="428" width="316" height="278" rx="18" fill="#F8F8F8" stroke="#111111" stroke-width="2"/>
+    <rect x="408" y="428" width="344" height="278" rx="18" fill="#F8F8F8" stroke="#111111" stroke-width="2"/>
+    <rect x="848" y="428" width="316" height="278" rx="18" fill="#F8F8F8" stroke="#111111" stroke-width="2"/>
+    <rect x="1184" y="428" width="344" height="278" rx="18" fill="#F8F8F8" stroke="#111111" stroke-width="2"/>
+
+    <text x="96" y="460" font-size="16" font-weight="700">인기 게시글</text>
+    <text x="432" y="460" font-size="16" font-weight="700">게시글 상세</text>
+    <text x="872" y="460" font-size="16" font-weight="700">인기 게시글</text>
+    <text x="1208" y="460" font-size="16" font-weight="700">게시글 상세</text>
+
+    <rect x="96" y="482" width="268" height="26" rx="8" fill="white" stroke="#111111" stroke-width="2"/>
+    <rect x="96" y="520" width="240" height="16" rx="8" fill="white" stroke="#111111" stroke-width="2"/>
+    <rect x="96" y="548" width="256" height="16" rx="8" fill="white" stroke="#111111" stroke-width="2"/>
+    <rect x="96" y="576" width="228" height="16" rx="8" fill="white" stroke="#111111" stroke-width="2"/>
+    <rect x="96" y="604" width="250" height="16" rx="8" fill="white" stroke="#111111" stroke-width="2"/>
+    <rect x="96" y="632" width="214" height="16" rx="8" fill="white" stroke="#111111" stroke-width="2"/>
+
+    <rect x="432" y="490" width="296" height="24" rx="8" fill="white" stroke="#111111" stroke-width="2"/>
+    <rect x="432" y="530" width="296" height="116" rx="12" fill="white" stroke="#111111" stroke-width="2"/>
+    <rect x="432" y="662" width="120" height="22" rx="8" fill="white" stroke="#111111" stroke-width="2"/>
+    <rect x="568" y="662" width="90" height="22" rx="8" fill="white" stroke="#111111" stroke-width="2"/>
+
+    <rect x="872" y="482" width="268" height="26" rx="8" fill="white" stroke="#111111" stroke-width="2"/>
+    <rect x="872" y="520" width="240" height="16" rx="8" fill="white" stroke="#111111" stroke-width="2"/>
+    <rect x="872" y="548" width="256" height="16" rx="8" fill="white" stroke="#111111" stroke-width="2"/>
+    <rect x="872" y="576" width="228" height="16" rx="8" fill="white" stroke="#111111" stroke-width="2"/>
+    <rect x="872" y="604" width="250" height="16" rx="8" fill="white" stroke="#111111" stroke-width="2"/>
+    <rect x="872" y="632" width="214" height="16" rx="8" fill="white" stroke="#111111" stroke-width="2"/>
+
+    <rect x="1208" y="490" width="296" height="24" rx="8" fill="white" stroke="#111111" stroke-width="2"/>
+    <rect x="1208" y="530" width="296" height="116" rx="12" fill="white" stroke="#111111" stroke-width="2"/>
+    <rect x="1208" y="662" width="120" height="22" rx="8" fill="white" stroke="#111111" stroke-width="2"/>
+    <rect x="1344" y="662" width="90" height="22" rx="8" fill="white" stroke="#111111" stroke-width="2"/>
+
+    <text x="40" y="788" font-size="18" font-weight="700">실시간 비교 패널</text>
+
+    <rect x="40" y="808" width="1520" height="270" rx="24" fill="white" stroke="#111111" stroke-width="2"/>
+    <rect x="72" y="840" width="210" height="84" rx="16" fill="#F8F8F8" stroke="#111111" stroke-width="2"/>
+    <rect x="298" y="840" width="210" height="84" rx="16" fill="#F8F8F8" stroke="#111111" stroke-width="2"/>
+    <rect x="524" y="840" width="210" height="84" rx="16" fill="#111111"/>
+    <rect x="750" y="840" width="210" height="84" rx="16" fill="#F8F8F8" stroke="#111111" stroke-width="2"/>
+    <rect x="976" y="840" width="210" height="84" rx="16" fill="#F8F8F8" stroke="#111111" stroke-width="2"/>
+    <rect x="1202" y="840" width="326" height="84" rx="16" fill="#F8F8F8" stroke="#111111" stroke-width="2"/>
+
+    <text x="96" y="866" font-size="13">DB 평균 지연</text>
+    <text x="322" y="866" font-size="13">DB p95 지연</text>
+    <text x="548" y="866" font-size="13" fill="white">속도 향상 요약</text>
+    <text x="774" y="866" font-size="13">Redis 평균 지연</text>
+    <text x="1000" y="866" font-size="13">Redis 적중률</text>
+    <text x="1226" y="866" font-size="13">손익분기 적중률</text>
+    <text x="96" y="905" font-size="28" font-weight="700">182 ms</text>
+    <text x="322" y="905" font-size="28" font-weight="700">310 ms</text>
+    <text x="548" y="895" font-size="34" font-weight="700" fill="white">7.6x</text>
+    <text x="548" y="915" font-size="14" fill="white">Redis + DB가 86% 더 빠름</text>
+    <text x="548" y="936" font-size="12" fill="white">182ms ÷ 24ms ≈ 7.6배</text>
+    <text x="774" y="905" font-size="28" font-weight="700">24 ms</text>
+    <text x="1000" y="905" font-size="28" font-weight="700">92%</text>
+    <text x="1226" y="900" font-size="28" font-weight="700">35%</text>
+    <text x="1226" y="918" font-size="13">이 이상이면 Redis + DB가 더 빠름</text>
+
+    <rect x="72" y="950" width="712" height="96" rx="18" fill="#F8F8F8" stroke="#111111" stroke-width="2"/>
+    <rect x="816" y="950" width="712" height="96" rx="18" fill="#F8F8F8" stroke="#111111" stroke-width="2"/>
+    <text x="96" y="980" font-size="16" font-weight="700">시간대별 지연 변화</text>
+    <text x="840" y="980" font-size="16" font-weight="700">적중률 대비 평균 지연</text>
+    <polyline points="120,1020 160,1010 200,1035 240,1000 280,1024 320,986 360,1032 400,1004 440,1018 480,1038 520,995 560,1014 600,1030 640,1002 680,1020 720,1042 760,1006" fill="none" stroke="#111111" stroke-width="4"/>
+    <polyline points="120,1010 160,990 200,998 240,984 280,992 320,978 360,987 400,981 440,990 480,996 520,983 560,988 600,991 640,980 680,986 720,995 760,981" fill="none" stroke="#666666" stroke-width="3" stroke-dasharray="8 8"/>
+    <line x1="950" y1="1008" x2="950" y2="1040" stroke="#111111" stroke-width="2" stroke-dasharray="6 6"/>
+    <polyline points="840,1036 900,1036 960,1018 1020,1002 1080,992 1140,986 1200,982 1260,979 1320,977 1380,976 1440,975 1500,974" fill="none" stroke="#111111" stroke-width="4"/>
+    <polyline points="840,994 900,996 960,998 1020,999 1080,1000 1140,1001 1200,1002 1260,1003 1320,1004 1380,1005 1440,1006 1500,1007" fill="none" stroke="#666666" stroke-width="3" stroke-dasharray="8 8"/>
+    <text x="876" y="1032" font-size="12">0%</text>
+    <text x="932" y="1032" font-size="12">20%</text>
+    <text x="972" y="1032" font-size="12">35%</text>
+    <text x="1088" y="1032" font-size="12">60%</text>
+    <text x="1472" y="1032" font-size="12">100%</text>
+    <text x="964" y="995" font-size="12">손익분기점</text>
+    <text x="96" y="1064" font-size="13">임계값 해석: 적중률이 35%를 넘는 구간부터 평균 지연시간이 DB 전용보다 낮아지고, 60% 이상에서는 격차가 크게 벌어짐</text>
+
+    <text x="40" y="1128" font-size="18" font-weight="700">실험 설정 패널</text>
+
+    <rect x="40" y="1148" width="960" height="332" rx="24" fill="white" stroke="#111111" stroke-width="2"/>
+    <rect x="1032" y="1148" width="528" height="332" rx="24" fill="white" stroke="#111111" stroke-width="2"/>
+
+    <text x="72" y="1188" font-size="18" font-weight="700">시나리오 설정</text>
+    <text x="1056" y="1188" font-size="18" font-weight="700">실행 로그</text>
+
+    <rect x="72" y="1210" width="270" height="64" rx="14" fill="#F8F8F8" stroke="#111111" stroke-width="2"/>
+    <rect x="362" y="1210" width="270" height="64" rx="14" fill="#F8F8F8" stroke="#111111" stroke-width="2"/>
+    <rect x="652" y="1210" width="316" height="64" rx="14" fill="#F8F8F8" stroke="#111111" stroke-width="2"/>
+    <text x="96" y="1236" font-size="13">시나리오</text>
+    <text x="386" y="1236" font-size="13">데이터 규모</text>
+    <text x="676" y="1236" font-size="13">캐시 모드</text>
+    <text x="96" y="1260" font-size="15">상세 조회 / 검색 / 랭킹</text>
+    <text x="386" y="1260" font-size="15">1천 / 1만 / 10만 건</text>
+    <text x="676" y="1260" font-size="15">콜드 / 웜 / 혼합 캐시</text>
+
+    <rect x="72" y="1292" width="210" height="64" rx="14" fill="#F8F8F8" stroke="#111111" stroke-width="2"/>
+    <rect x="298" y="1292" width="210" height="64" rx="14" fill="#F8F8F8" stroke="#111111" stroke-width="2"/>
+    <rect x="524" y="1292" width="210" height="64" rx="14" fill="#F8F8F8" stroke="#111111" stroke-width="2"/>
+    <rect x="750" y="1292" width="218" height="64" rx="14" fill="#F8F8F8" stroke="#111111" stroke-width="2"/>
+    <text x="96" y="1318" font-size="13">반복 횟수</text>
+    <text x="322" y="1318" font-size="13">동시 요청 수</text>
+    <text x="548" y="1318" font-size="13">TTL</text>
+    <text x="774" y="1318" font-size="13">키 패턴</text>
+    <text x="96" y="1342" font-size="15">10 / 100 / 1000</text>
+    <text x="322" y="1342" font-size="15">1 / 10 / 50 / 100</text>
+    <text x="548" y="1342" font-size="15">10초 / 60초 / 300초</text>
+    <text x="774" y="1342" font-size="15">동일 키 / 랜덤 키</text>
+
+    <rect x="72" y="1374" width="170" height="66" rx="14" fill="#F8F8F8" stroke="#111111" stroke-width="2"/>
+    <rect x="258" y="1374" width="170" height="66" rx="14" fill="#F8F8F8" stroke="#111111" stroke-width="2"/>
+    <rect x="444" y="1374" width="170" height="66" rx="14" fill="#F8F8F8" stroke="#111111" stroke-width="2"/>
+    <rect x="630" y="1374" width="170" height="66" rx="14" fill="#111111"/>
+    <rect x="816" y="1374" width="152" height="66" rx="14" fill="#F8F8F8" stroke="#111111" stroke-width="2"/>
+    <text x="100" y="1402" font-size="14">데이터 적재</text>
+    <text x="286" y="1402" font-size="14">Redis 비우기</text>
+    <text x="468" y="1402" font-size="14">화면 초기화</text>
+    <text x="684" y="1402" font-size="14" fill="white">벤치마크 실행</text>
+    <text x="854" y="1402" font-size="14">중지</text>
+
+    <rect x="1056" y="1210" width="480" height="230" rx="16" fill="#F8F8F8" stroke="#111111" stroke-width="2"/>
+    <text x="1080" y="1242" font-size="14">[15:03:02] 시나리오 로드: 커뮤니티 피드</text>
+    <text x="1080" y="1272" font-size="14">[15:03:08] DB 전용 실행 시작 (콜드 캐시)</text>
+    <text x="1080" y="1302" font-size="14">[15:03:08] Redis + DB 실행 시작 (웜 캐시)</text>
+    <text x="1080" y="1332" font-size="14">[15:03:11] DB 전용 p95가 300ms 초과</text>
+    <text x="1080" y="1362" font-size="14">[15:03:11] Redis 적중률 92%로 안정화</text>
+    <text x="1080" y="1392" font-size="14">[15:03:13] 실행 종료: 7.6배 속도 향상</text>
+
+    <text x="40" y="1524" font-size="13">가져오기 팁: SVG를 Figma로 드래그한 뒤 한두 번 ungroup하면 섹션별로 바로 수정 가능하다.</text>
+  </g>
+</svg>

@@ -1,9 +1,30 @@
+import socket
+
 from internal.config.runtime_config import RuntimeConfig
+from internal.observability.logger import Logger
 
 
 class MiniRedisServer:
-    def __init__(self, config: RuntimeConfig) -> None:
+    def __init__(self, config: RuntimeConfig, logger: Logger | None = None) -> None:
         self._config = config
+        self._logger = logger or Logger()
 
     def run(self) -> None:
-        print(f"mini-redis server skeleton listening on {self._config.host}:{self._config.port}")
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
+            server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            server_socket.bind((self._config.host, self._config.port))
+            server_socket.listen()
+
+            self._logger.info(
+                f"mini-redis server listening on {self._config.host}:{self._config.port}"
+            )
+
+            try:
+                while True:
+                    client_socket, client_address = server_socket.accept()
+                    with client_socket:
+                        self._logger.info(
+                            f"accepted connection from {client_address[0]}:{client_address[1]}"
+                        )
+            except KeyboardInterrupt:
+                self._logger.info("mini-redis server stopped")

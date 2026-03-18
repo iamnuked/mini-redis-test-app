@@ -21,6 +21,8 @@ class SessionHandler:
         metrics: Metrics,
         logger: Logger | None = None,
         read_size: int = 4096,
+        read_timeout_seconds: int = 5,
+        write_timeout_seconds: int = 5,
     ) -> None:
         self._client_socket = client_socket
         self._protocol_handler = protocol_handler
@@ -30,6 +32,8 @@ class SessionHandler:
         self._metrics = metrics
         self._logger = logger or Logger()
         self._read_size = read_size
+        self._read_timeout_seconds = read_timeout_seconds
+        self._write_timeout_seconds = write_timeout_seconds
 
     def handle(self) -> None:
         try:
@@ -49,6 +53,7 @@ class SessionHandler:
             self._logger.error(f"session handling failed: {error}")
 
     def _read_request(self) -> bytes:
+        self._client_socket.settimeout(self._read_timeout_seconds)
         return self._client_socket.recv(self._read_size)
 
     def _process_request(self, request_bytes: bytes) -> bytes:
@@ -66,4 +71,5 @@ class SessionHandler:
         return self._response_encoder.encode(service_result)
 
     def _write_response(self, response: bytes) -> None:
+        self._client_socket.settimeout(self._write_timeout_seconds)
         self._client_socket.sendall(response)

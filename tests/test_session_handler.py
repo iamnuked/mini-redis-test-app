@@ -14,6 +14,7 @@ class FakeSocket:
     def __init__(self, request_bytes: bytes) -> None:
         self._request_bytes = request_bytes
         self.sent_data = b""
+        self.timeout_history: list[int] = []
 
     def recv(self, size: int) -> bytes:
         data = self._request_bytes[:size]
@@ -22,6 +23,9 @@ class FakeSocket:
 
     def sendall(self, data: bytes) -> None:
         self.sent_data += data
+
+    def settimeout(self, timeout: int) -> None:
+        self.timeout_history.append(timeout)
 
 
 class FakeLogger:
@@ -75,6 +79,7 @@ def test_handle_returns_immediate_hello_response() -> None:
     assert fake_socket.sent_data.startswith(b"%3\r\n")
     assert metrics.requests_total == 1
     assert metrics.errors_total == 0
+    assert fake_socket.timeout_history == [5, 5]
 
 
 def test_handle_executes_regular_command_and_writes_response() -> None:
@@ -94,6 +99,7 @@ def test_handle_executes_regular_command_and_writes_response() -> None:
     assert fake_socket.sent_data == b"+OK\r\n"
     assert metrics.requests_total == 1
     assert metrics.errors_total == 0
+    assert fake_socket.timeout_history == [5, 5]
 
 
 def test_handle_rejects_request_when_size_limit_is_exceeded() -> None:
@@ -116,3 +122,25 @@ def test_handle_rejects_request_when_size_limit_is_exceeded() -> None:
     assert metrics.requests_total == 0
     assert metrics.errors_total == 1
     assert logger.error_messages == ["request size limit exceeded"]
+
+
+def test_handle_logs_protocol_error_and_increments_error_metric() -> None:
+    fake_socket = FakeSocket(b"+PING\r\n")
+    metrics = Metrics()
+    logger = FakeLogger()
+    handler = SessionHandler(
+        client_socket=fake_socket,
+        protocol_handler=ProtocolHandler(),
+        command_service=create_command_service(),
+        response_encoder=RespResponseEncoder(),
+        resource_guard=create_resource_guard(),
+        metrics=metrics,
+        logger=logger,
+    )
+
+    handler.handle()
+
+    assert fake_socket.sent_data == b"-ERR protocol error\r\n"
+    assert metrics.requests_total == 1
+    assert metrics.errors_total == 0
+    assert logger.error_messages == []

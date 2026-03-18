@@ -1,7 +1,9 @@
 import socket
+import time
 
 from internal.clock.system_clock import SystemClock
 from internal.config.runtime_config import RuntimeConfig
+from internal.expiration.expiration_sweeper import ExpirationSweeper
 from internal.guard.limits import ResourceLimits
 from internal.guard.resource_guard import ResourceGuard
 from internal.observability.logger import Logger
@@ -44,6 +46,13 @@ class MiniRedisServer:
             store_repository=self._store_repository,
             ttl_repository=self._ttl_repository,
         )
+        self._expiration_sweeper = ExpirationSweeper(
+            clock=self._clock,
+            store_repository=self._store_repository,
+            ttl_repository=self._ttl_repository,
+            sweep_interval_seconds=self._config.expiration_sweep_interval_seconds,
+            sweep_batch_size=self._config.expiration_sweep_batch_size,
+        )
 
     def run(self) -> None:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
@@ -51,11 +60,13 @@ class MiniRedisServer:
             server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             server_socket.bind((self._config.host, self._config.port))
             server_socket.listen()
-            server_socket.settimeout(1.0)
+            server_socket.settimeout(self._accept_timeout_seconds())
 
             self._logger.info(
                 f"mini-redis server listening on {self._config.host}:{self._config.port}"
             )
+            if self._config.expiration_sweep_enabled:
+                self._expiration_sweeper.start()
 
             try:
                 while not self._shutdown_manager.is_shutdown_requested():
@@ -69,6 +80,7 @@ class MiniRedisServer:
                         raise
 
                     with client_socket:
+                        client_socket.settimeout(self._config.idle_timeout_seconds)
                         if not self._resource_guard.is_connection_allowed(
                             self._metrics.active_connections
                         ):
@@ -90,6 +102,8 @@ class MiniRedisServer:
                             metrics=self._metrics,
                             logger=self._logger,
                             read_size=self._config.max_request_size_bytes,
+                            read_timeout_seconds=self._config.read_timeout_seconds,
+                            write_timeout_seconds=self._config.write_timeout_seconds,
                         )
                         try:
                             handler.handle()
@@ -98,6 +112,8 @@ class MiniRedisServer:
             except KeyboardInterrupt:
                 self.stop()
             finally:
+                self._wait_for_active_connections()
+                self._expiration_sweeper.stop()
                 self._server_socket = None
                 self._logger.info("mini-redis server stopped")
 
@@ -109,3 +125,11 @@ class MiniRedisServer:
         self._shutdown_manager.request_shutdown()
         if self._server_socket is not None:
             self._server_socket.close()
+
+    def _accept_timeout_seconds(self) -> float:
+        return max(1.0, min(float(self._config.idle_timeout_seconds), 1.0))
+
+    def _wait_for_active_connections(self) -> None:
+        deadline = time.monotonic() + max(0, self._config.graceful_shutdown_seconds)
+        while self._metrics.active_connections > 0 and time.monotonic() < deadline:
+            time.sleep(0.05)

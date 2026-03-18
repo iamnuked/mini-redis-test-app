@@ -28,6 +28,13 @@ require_file() {
 require_file "$APP_VENV_PYTHON" "app virtualenv python"
 require_file "$SETTINGS_FILE" "app settings file"
 
+is_benchmark_server_pid() {
+  local pid="$1"
+  local command
+  command="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+  [[ "$command" == *"app.api.server"* ]]
+}
+
 port_open() {
   local host="$1"
   local port="$2"
@@ -77,6 +84,30 @@ kill_process_on_port() {
     [[ -z "$pid" ]] && continue
     kill "$pid" >/dev/null 2>&1 || true
   done <<< "$pids"
+  sleep 1
+}
+
+stop_stale_benchmark_servers() {
+  if ! command -v lsof >/dev/null 2>&1; then
+    echo "[warn] lsof is not available, so stale benchmark server cleanup is limited"
+    return 0
+  fi
+
+  local port
+  for port in $(seq 8000 8020); do
+    local pids
+    pids="$(lsof -ti tcp:"$port" || true)"
+    [[ -z "$pids" ]] && continue
+
+    while IFS= read -r pid; do
+      [[ -z "$pid" ]] && continue
+      if is_benchmark_server_pid "$pid"; then
+        echo "[stop] old benchmark server on ${port}: ${pid}"
+        kill "$pid" >/dev/null 2>&1 || true
+      fi
+    done <<< "$pids"
+  done
+
   sleep 1
 }
 
@@ -152,6 +183,8 @@ start_mini_redis() {
 }
 
 start_backend() {
+  stop_stale_benchmark_servers
+
   if [[ "$(port_open 127.0.0.1 8000)" == "1" ]]; then
     if latest_backend_signature; then
       echo "[skip] latest benchmark backend already available on 127.0.0.1:8000"

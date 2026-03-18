@@ -1,2 +1,10 @@
 RESP_OK = "OK"
-RESP_ERR = "ERR"
+RESP_ERR_PREFIX = "ERR"
+
+ERR_EMPTY_COMMAND = "empty command"
+ERR_PROTOCOL_ERROR = "protocol error"
+ERR_UNSUPPORTED_COMMAND = "unsupported command"
+ERR_WRONG_NUMBER_OF_ARGUMENTS = "wrong number of arguments"
+ERR_INVALID_INTEGER = "invalid integer"
+ERR_INVALID_TTL = "invalid ttl"
+ERR_UNSUPPORTED_PROTOCOL_VERSION = "unsupported protocol version"

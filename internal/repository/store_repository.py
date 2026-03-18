@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 
+from internal.repository.value_entry import ValueEntry
+
 
 class StoreRepository(ABC):
     @abstractmethod
@@ -7,11 +9,11 @@ class StoreRepository(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get(self, key: str) -> str | None:
+    def get(self, key: str) -> ValueEntry | None:
         raise NotImplementedError
 
     @abstractmethod
-    def set(self, key: str, value: str) -> None:
+    def set(self, key: str, value: ValueEntry) -> None:
         raise NotImplementedError
 
     @abstractmethod

@@ -1,5 +1,6 @@
 from internal.protocol.resp.response_encoder import RespResponseEncoder
 from internal.protocol.resp.types import (
+    RespArray,
     RespBlobString,
     RespMap,
     RespNull,
@@ -52,3 +53,16 @@ def test_encode_map() -> None:
     )
 
     assert encoder.encode(value) == b"%2\r\n+server\r\n+mini-redis\r\n+proto\r\n:3\r\n"
+
+
+def test_encode_array() -> None:
+    encoder = RespResponseEncoder()
+
+    value = RespArray(
+        items=(
+            RespBlobString(value="a"),
+            RespBlobString(value="b"),
+        )
+    )
+
+    assert encoder.encode(value) == b"*2\r\n$1\r\na\r\n$1\r\nb\r\n"

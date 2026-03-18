@@ -90,3 +90,68 @@ def test_session_integration_returns_error_for_invalid_request() -> None:
     )
 
     assert response == b"-ERR protocol error\r\n"
+
+
+def test_session_integration_supports_hash_round_trip() -> None:
+    command_service = create_command_service()
+
+    set_response = run_session(
+        b"*4\r\n$4\r\nHSET\r\n$4\r\nuser\r\n$4\r\nname\r\n$4\r\nmini\r\n",
+        command_service,
+    )
+    get_response = run_session(
+        b"*3\r\n$4\r\nHGET\r\n$4\r\nuser\r\n$4\r\nname\r\n",
+        command_service,
+    )
+
+    assert set_response == b":1\r\n"
+    assert get_response == b"$4\r\nmini\r\n"
+
+
+def test_session_integration_returns_wrongtype_error() -> None:
+    command_service = create_command_service()
+    run_session(
+        b"*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$5\r\nvalue\r\n",
+        command_service,
+    )
+
+    response = run_session(
+        b"*3\r\n$4\r\nHGET\r\n$3\r\nkey\r\n$5\r\nfield\r\n",
+        command_service,
+    )
+
+    assert response == (
+        b"-ERR WRONGTYPE Operation against a key holding the wrong kind of value\r\n"
+    )
+
+
+def test_session_integration_supports_list_round_trip() -> None:
+    command_service = create_command_service()
+
+    push_response = run_session(
+        b"*4\r\n$5\r\nRPUSH\r\n$5\r\nqueue\r\n$1\r\na\r\n$1\r\nb\r\n",
+        command_service,
+    )
+    range_response = run_session(
+        b"*4\r\n$6\r\nLRANGE\r\n$5\r\nqueue\r\n:0\r\n:-1\r\n",
+        command_service,
+    )
+
+    assert push_response == b":2\r\n"
+    assert range_response == b"*2\r\n$1\r\na\r\n$1\r\nb\r\n"
+
+
+def test_session_integration_supports_zset_round_trip() -> None:
+    command_service = create_command_service()
+
+    add_response = run_session(
+        b"*6\r\n$4\r\nZADD\r\n$4\r\nrank\r\n$1\r\n2\r\n$4\r\nbeta\r\n$1\r\n1\r\n$5\r\nalpha\r\n",
+        command_service,
+    )
+    range_response = run_session(
+        b"*4\r\n$6\r\nZRANGE\r\n$4\r\nrank\r\n:0\r\n:-1\r\n",
+        command_service,
+    )
+
+    assert add_response == b":2\r\n"
+    assert range_response == b"*2\r\n$5\r\nalpha\r\n$4\r\nbeta\r\n"

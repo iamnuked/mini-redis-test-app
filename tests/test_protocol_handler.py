@@ -23,6 +23,14 @@ def test_handle_returns_command_for_non_hello_request() -> None:
     assert result.has_immediate_response() is False
 
 
+def test_handle_accepts_variadic_command() -> None:
+    handler = ProtocolHandler()
+
+    result = handler.handle(b"*4\r\n$5\r\nLPUSH\r\n$3\r\nkey\r\n$1\r\na\r\n$1\r\nb\r\n")
+
+    assert result.command == Command(name="LPUSH", arguments=("key", "a", "b"))
+
+
 def test_handle_with_error_response_converts_protocol_failures() -> None:
     handler = ProtocolHandler()
 

@@ -1,5 +1,6 @@
 from internal.expiration.expiration_manager import ExpirationManager
 from internal.repository.store_repository import StoreRepository
+from internal.repository.value_entry import ValueEntry
 
 
 class GetService:
@@ -11,6 +12,6 @@ class GetService:
         self._store_repository = store_repository
         self._expiration_manager = expiration_manager
 
-    def execute(self, key: str) -> str | None:
+    def execute(self, key: str) -> ValueEntry | None:
         self._expiration_manager.purge_if_expired(key)
         return self._store_repository.get(key)

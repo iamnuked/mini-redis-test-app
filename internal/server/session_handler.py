@@ -1,10 +1,12 @@
 import socket
 
+from internal.command.errors import CommandError
 from internal.guard.resource_guard import ResourceGuard
 from internal.observability.logger import Logger
 from internal.observability.metrics import Metrics
 from internal.protocol.resp.protocol_handler import ProtocolHandler
 from internal.protocol.resp.response_encoder import RespResponseEncoder
+from internal.protocol.resp.types import RespSimpleError
 from internal.service.command_service import CommandService
 
 
@@ -57,7 +59,10 @@ class SessionHandler:
         if protocol_result.command is None:
             raise ValueError("protocol handler returned neither command nor response")
 
-        service_result = self._command_service.execute(protocol_result.command)
+        try:
+            service_result = self._command_service.execute(protocol_result.command)
+        except CommandError as error:
+            service_result = RespSimpleError(message=error.message)
         return self._response_encoder.encode(service_result)
 
     def _write_response(self, response: bytes) -> None:

@@ -6,7 +6,7 @@ from internal.guard.limits import ResourceLimits
 from internal.guard.resource_guard import ResourceGuard
 from internal.observability.logger import Logger
 from internal.observability.metrics import Metrics
-from internal.protocol.resp.request_decoder import RespRequestDecoder
+from internal.protocol.resp.protocol_handler import ProtocolHandler
 from internal.protocol.resp.response_encoder import RespResponseEncoder
 from internal.repository.in_memory_store import InMemoryStoreRepository
 from internal.repository.in_memory_ttl import InMemoryTtlRepository
@@ -83,7 +83,7 @@ class MiniRedisServer:
                         )
                         handler = SessionHandler(
                             client_socket=client_socket,
-                            request_decoder=RespRequestDecoder(),
+                            protocol_handler=ProtocolHandler(),
                             command_service=self._command_service,
                             response_encoder=RespResponseEncoder(),
                             resource_guard=self._resource_guard,

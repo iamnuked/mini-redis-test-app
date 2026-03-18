@@ -1,0 +1,118 @@
+from internal.clock.fake_clock import FakeClock
+from internal.guard.limits import ResourceLimits
+from internal.guard.resource_guard import ResourceGuard
+from internal.observability.metrics import Metrics
+from internal.protocol.resp.protocol_handler import ProtocolHandler
+from internal.protocol.resp.response_encoder import RespResponseEncoder
+from internal.repository.in_memory_store import InMemoryStoreRepository
+from internal.repository.in_memory_ttl import InMemoryTtlRepository
+from internal.server.session_handler import SessionHandler
+from internal.service.command_service import CommandService
+
+
+class FakeSocket:
+    def __init__(self, request_bytes: bytes) -> None:
+        self._request_bytes = request_bytes
+        self.sent_data = b""
+
+    def recv(self, size: int) -> bytes:
+        data = self._request_bytes[:size]
+        self._request_bytes = b""
+        return data
+
+    def sendall(self, data: bytes) -> None:
+        self.sent_data += data
+
+
+class FakeLogger:
+    def __init__(self) -> None:
+        self.info_messages: list[str] = []
+        self.error_messages: list[str] = []
+
+    def info(self, message: str) -> None:
+        self.info_messages.append(message)
+
+    def error(self, message: str) -> None:
+        self.error_messages.append(message)
+
+
+def create_command_service() -> CommandService:
+    return CommandService(
+        clock=FakeClock(current_time=100.0),
+        store_repository=InMemoryStoreRepository(),
+        ttl_repository=InMemoryTtlRepository(),
+    )
+
+
+def create_resource_guard(max_request_size_bytes: int = 1024) -> ResourceGuard:
+    return ResourceGuard(
+        ResourceLimits(
+            max_connections=4,
+            max_request_size_bytes=max_request_size_bytes,
+            max_array_items=16,
+            max_resp_depth=4,
+            max_blob_size_bytes=1024,
+        )
+    )
+
+
+def test_handle_returns_immediate_hello_response() -> None:
+    fake_socket = FakeSocket(b"*2\r\n$5\r\nHELLO\r\n:3\r\n")
+    metrics = Metrics()
+    logger = FakeLogger()
+    handler = SessionHandler(
+        client_socket=fake_socket,
+        protocol_handler=ProtocolHandler(),
+        command_service=create_command_service(),
+        response_encoder=RespResponseEncoder(),
+        resource_guard=create_resource_guard(),
+        metrics=metrics,
+        logger=logger,
+    )
+
+    handler.handle()
+
+    assert fake_socket.sent_data.startswith(b"%3\r\n")
+    assert metrics.requests_total == 1
+    assert metrics.errors_total == 0
+
+
+def test_handle_executes_regular_command_and_writes_response() -> None:
+    fake_socket = FakeSocket(b"*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$5\r\nvalue\r\n")
+    metrics = Metrics()
+    handler = SessionHandler(
+        client_socket=fake_socket,
+        protocol_handler=ProtocolHandler(),
+        command_service=create_command_service(),
+        response_encoder=RespResponseEncoder(),
+        resource_guard=create_resource_guard(),
+        metrics=metrics,
+    )
+
+    handler.handle()
+
+    assert fake_socket.sent_data == b"+OK\r\n"
+    assert metrics.requests_total == 1
+    assert metrics.errors_total == 0
+
+
+def test_handle_rejects_request_when_size_limit_is_exceeded() -> None:
+    fake_socket = FakeSocket(b"*2\r\n$5\r\nHELLO\r\n:3\r\n")
+    metrics = Metrics()
+    logger = FakeLogger()
+    handler = SessionHandler(
+        client_socket=fake_socket,
+        protocol_handler=ProtocolHandler(),
+        command_service=create_command_service(),
+        response_encoder=RespResponseEncoder(),
+        resource_guard=create_resource_guard(max_request_size_bytes=4),
+        metrics=metrics,
+        logger=logger,
+    )
+
+    handler.handle()
+
+    assert fake_socket.sent_data == b""
+    assert metrics.requests_total == 0
+    assert metrics.errors_total == 1
+    assert logger.error_messages == ["request size limit exceeded"]

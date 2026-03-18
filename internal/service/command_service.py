@@ -1,7 +1,20 @@
 from internal.clock.clock import Clock
 from internal.command.command import Command
 from internal.command.errors import CommandValidationError
-from internal.protocol.resp.types import RespValue
+from internal.expiration.expiration_manager import ExpirationManager
+from internal.expiration.ttl_calculator import TtlCalculator
+from internal.protocol.resp.messages import (
+    ERR_INVALID_INTEGER,
+    ERR_INVALID_TTL,
+    ERR_UNSUPPORTED_COMMAND,
+)
+from internal.protocol.resp.types import (
+    RespBlobString,
+    RespNull,
+    RespNumber,
+    RespSimpleString,
+    RespValue,
+)
 from internal.repository.store_repository import StoreRepository
 from internal.repository.ttl_repository import TtlRepository
 from internal.service.del_service import DelService
@@ -9,8 +22,6 @@ from internal.service.expire_service import ExpireService
 from internal.service.get_service import GetService
 from internal.service.set_service import SetService
 from internal.service.ttl_service import TtlService
-from internal.expiration.expiration_manager import ExpirationManager
-from internal.expiration.ttl_calculator import TtlCalculator
 
 
 class CommandService:
@@ -49,40 +60,36 @@ class CommandService:
 
     def execute(self, command: Command) -> RespValue:
         if command.name == "SET":
-            return RespValue(
-                kind="simple_string",
-                value=self._set_service.execute(command.arguments[0], command.arguments[1]),
+            return RespSimpleString(
+                value=self._set_service.execute(command.arguments[0], command.arguments[1])
             )
         if command.name == "GET":
             value = self._get_service.execute(command.arguments[0])
             if value is None:
-                return RespValue(kind="null", value=None)
-            return RespValue(kind="blob_string", value=value)
+                return RespNull()
+            return RespBlobString(value=value)
         if command.name == "DEL":
-            return RespValue(
-                kind="number",
+            return RespNumber(
                 value=self._del_service.execute(command.arguments[0]),
             )
         if command.name == "EXPIRE":
             ttl_seconds = self._parse_expire_seconds(command.arguments[1])
-            return RespValue(
-                kind="number",
+            return RespNumber(
                 value=self._expire_service.execute(command.arguments[0], ttl_seconds),
             )
         if command.name == "TTL":
-            return RespValue(
-                kind="number",
+            return RespNumber(
                 value=self._ttl_service.execute(command.arguments[0]),
             )
-        raise CommandValidationError("unsupported command")
+        raise CommandValidationError(ERR_UNSUPPORTED_COMMAND)
 
     def _parse_expire_seconds(self, value: str) -> int:
         try:
             ttl_seconds = int(value)
         except ValueError as error:
-            raise CommandValidationError("invalid integer") from error
+            raise CommandValidationError(ERR_INVALID_INTEGER) from error
 
         if ttl_seconds <= 0:
-            raise CommandValidationError("invalid ttl")
+            raise CommandValidationError(ERR_INVALID_TTL)
 
         return ttl_seconds

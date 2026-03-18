@@ -42,11 +42,7 @@ class ExpirationSweeper:
 
         self._running = False
         self._stop_event.set()
-        if (
-            self._worker is not None
-            and self._worker.is_alive()
-            and threading.current_thread() is not self._worker
-        ):
+        if self._worker is not None and self._worker.is_alive():
             self._worker.join(timeout=max(1.0, float(self._sweep_interval_seconds)))
         self._worker = None
 

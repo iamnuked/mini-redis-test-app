@@ -19,8 +19,7 @@ from internal.config.runtime_config import RuntimeConfig
 CRLF = b"\r\n"
 RespScalarValue: TypeAlias = str | int | None
 RespMapValue: TypeAlias = dict[str, RespScalarValue]
-RespArrayValue: TypeAlias = list["RespObjectValue"]
-RespObjectValue: TypeAlias = RespScalarValue | RespMapValue | RespArrayValue
+RespObjectValue: TypeAlias = RespScalarValue | RespMapValue
 
 
 class CliUsageError(Exception):

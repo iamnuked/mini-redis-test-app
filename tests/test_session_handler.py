@@ -14,7 +14,7 @@ class FakeSocket:
     def __init__(self, request_bytes: bytes) -> None:
         self._request_bytes = request_bytes
         self.sent_data = b""
-        self.timeout_history: list[int] = []
+        self.timeout_history: list[float] = []
 
     def recv(self, size: int) -> bytes:
         data = self._request_bytes[:size]
@@ -24,7 +24,7 @@ class FakeSocket:
     def sendall(self, data: bytes) -> None:
         self.sent_data += data
 
-    def settimeout(self, timeout: int) -> None:
+    def settimeout(self, timeout: float) -> None:
         self.timeout_history.append(timeout)
 
 

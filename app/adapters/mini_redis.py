@@ -164,6 +164,11 @@ def _parse_resp(sock: socket.socket) -> Any:
 
 
 def _is_retryable_connection_error(exc: Exception) -> bool:
+    # Windows: WSAECONNABORTED(10053), WSAECONNRESET(10054) — 서버 유휴 타임아웃 후
+    # 기존 소켓이 닫혔을 때 발생하는 OS 수준 에러이며 재연결로 복구 가능합니다.
+    winerror = getattr(exc, "winerror", None)
+    if winerror in (10053, 10054):
+        return True
     message = str(exc).lower()
     return any(
         fragment in message
@@ -172,5 +177,7 @@ def _is_retryable_connection_error(exc: Exception) -> bool:
             "connection closed",
             "broken pipe",
             "reset by peer",
+            "connection aborted",
+            "connection reset",
         )
     )

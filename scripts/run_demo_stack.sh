@@ -2,7 +2,21 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_VENV_PYTHON="$ROOT_DIR/.venv/bin/python"
+
+# Python 실행 파일 탐지: 가상환경(Unix/Windows) → 시스템 python3/python 순서로 시도합니다.
+if [[ -f "$ROOT_DIR/.venv/bin/python" ]]; then
+  APP_VENV_PYTHON="$ROOT_DIR/.venv/bin/python"
+elif [[ -f "$ROOT_DIR/.venv/Scripts/python.exe" ]]; then
+  APP_VENV_PYTHON="$ROOT_DIR/.venv/Scripts/python.exe"
+elif command -v python3 >/dev/null 2>&1; then
+  APP_VENV_PYTHON="$(command -v python3)"
+elif command -v python >/dev/null 2>&1; then
+  APP_VENV_PYTHON="$(command -v python)"
+else
+  echo "[error] Python 실행 파일을 찾을 수 없습니다. python 또는 python3 를 PATH에 추가하세요." >&2
+  exit 1
+fi
+
 SETTINGS_FILE="${APP_SETTINGS_FILE:-$ROOT_DIR/config/mongodb.local.json}"
 TMP_DIR="$ROOT_DIR/.tmp"
 PID_DIR="$TMP_DIR/pids"
@@ -159,7 +173,11 @@ start_mongodb() {
 
 seed_mongodb() {
   echo "[seed] MongoDB seed data"
-  APP_SETTINGS_FILE="$SETTINGS_FILE" "$APP_VENV_PYTHON" "$ROOT_DIR/scripts/seed_mongodb.py"
+  # seed_file 경로가 CWD 기준 상대 경로이므로 프로젝트 루트에서 실행해야 합니다.
+  (
+    cd "$ROOT_DIR"
+    APP_SETTINGS_FILE="$SETTINGS_FILE" "$APP_VENV_PYTHON" "$ROOT_DIR/scripts/seed_mongodb.py"
+  )
 }
 
 start_mini_redis() {
@@ -175,7 +193,10 @@ start_mini_redis() {
   (
     cd "$mini_root"
     export PYTHONPATH="$mini_root"
-    nohup python3 cmd/mini_redis_server/main.py >>"$MINI_REDIS_LOG" 2>&1 < /dev/null &
+    # python3 가 없는 Windows 환경에서는 python 을 사용합니다.
+    local _py
+    _py="$(command -v python3 2>/dev/null || command -v python)"
+    nohup "$_py" cmd/mini_redis_server/main.py >>"$MINI_REDIS_LOG" 2>&1 < /dev/null &
     echo $! > "$MINI_REDIS_PID_FILE"
   )
 

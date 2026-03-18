@@ -4,6 +4,8 @@ from internal.command.errors import CommandValidationError
 from internal.expiration.expiration_manager import ExpirationManager
 from internal.expiration.ttl_calculator import TtlCalculator
 from internal.protocol.resp.messages import (
+    ERR_INVALID_DB,
+    ERR_UNSUPPORTED_AUTH,
     ERR_UNSUPPORTED_COMMAND,
     ERR_WRONG_TYPE,
 )
@@ -64,6 +66,14 @@ class CommandService:
         )
 
     def execute(self, command: Command) -> RespValue:
+        if command.name == "AUTH":
+            raise CommandValidationError(ERR_UNSUPPORTED_AUTH)
+        if command.name == "PING":
+            return self._execute_ping(command.arguments)
+        if command.name == "SELECT":
+            return self._execute_select(command.arguments[0])
+        if command.name == "CLIENT":
+            return self._execute_client(command.arguments)
         if command.name == "SET":
             return RespSimpleString(
                 value=self._set_service.execute(command.arguments[0], command.arguments[1])
@@ -148,6 +158,22 @@ class CommandService:
             if value is None:
                 return RespNull()
             return RespBlobString(value=value)
+        raise CommandValidationError(ERR_UNSUPPORTED_COMMAND)
+
+    def _execute_ping(self, arguments: tuple[str, ...]) -> RespValue:
+        if not arguments:
+            return RespSimpleString(value="PONG")
+        return RespBlobString(value=arguments[0])
+
+    def _execute_select(self, db_index: str) -> RespValue:
+        if int(db_index) < 0:
+            raise CommandValidationError(ERR_INVALID_DB)
+        return RespSimpleString(value="OK")
+
+    def _execute_client(self, arguments: tuple[str, ...]) -> RespValue:
+        subcommand = arguments[0].upper()
+        if subcommand in {"SETNAME", "SETINFO", "MAINT_NOTIFICATIONS"}:
+            return RespSimpleString(value="OK")
         raise CommandValidationError(ERR_UNSUPPORTED_COMMAND)
 
     def _require_string(self, entry: ValueEntry) -> str:

@@ -1,3 +1,4 @@
+from internal.command.command import Command
 from internal.clock.fake_clock import FakeClock
 from internal.guard.limits import ResourceLimits
 from internal.guard.resource_guard import ResourceGuard
@@ -11,14 +12,18 @@ from internal.service.command_service import CommandService
 
 
 class FakeSocket:
-    def __init__(self, request_bytes: bytes) -> None:
-        self._request_bytes = request_bytes
+    def __init__(self, request_bytes: bytes | list[bytes]) -> None:
+        if isinstance(request_bytes, list):
+            self._request_chunks = list(request_bytes)
+        else:
+            self._request_chunks = [request_bytes]
         self.sent_data = b""
         self.timeout_history: list[float] = []
 
     def recv(self, size: int) -> bytes:
-        data = self._request_bytes[:size]
-        self._request_bytes = b""
+        if not self._request_chunks:
+            return b""
+        data = self._request_chunks.pop(0)[:size]
         return data
 
     def sendall(self, data: bytes) -> None:
@@ -79,7 +84,7 @@ def test_handle_returns_immediate_hello_response() -> None:
     assert fake_socket.sent_data.startswith(b"%3\r\n")
     assert metrics.requests_total == 1
     assert metrics.errors_total == 0
-    assert fake_socket.timeout_history == [5, 5]
+    assert fake_socket.timeout_history == [5, 5, 5]
 
 
 def test_handle_executes_regular_command_and_writes_response() -> None:
@@ -99,7 +104,7 @@ def test_handle_executes_regular_command_and_writes_response() -> None:
     assert fake_socket.sent_data == b"+OK\r\n"
     assert metrics.requests_total == 1
     assert metrics.errors_total == 0
-    assert fake_socket.timeout_history == [5, 5]
+    assert fake_socket.timeout_history == [5, 5, 5]
 
 
 def test_handle_rejects_request_when_size_limit_is_exceeded() -> None:
@@ -144,3 +149,76 @@ def test_handle_logs_protocol_error_and_increments_error_metric() -> None:
     assert metrics.requests_total == 1
     assert metrics.errors_total == 0
     assert logger.error_messages == []
+
+
+def test_handle_processes_multiple_requests_on_same_connection() -> None:
+    fake_socket = FakeSocket(
+        [
+            b"*1\r\n$4\r\nPING\r\n",
+            b"*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$5\r\nvalue\r\n",
+            b"*2\r\n$3\r\nGET\r\n$3\r\nkey\r\n",
+            b"",
+        ]
+    )
+    metrics = Metrics()
+    handler = SessionHandler(
+        client_socket=fake_socket,
+        protocol_handler=ProtocolHandler(),
+        command_service=create_command_service(),
+        response_encoder=RespResponseEncoder(),
+        resource_guard=create_resource_guard(),
+        metrics=metrics,
+    )
+
+    handler.handle()
+
+    assert fake_socket.sent_data == b"+PONG\r\n+OK\r\n$5\r\nvalue\r\n"
+    assert metrics.requests_total == 3
+    assert metrics.errors_total == 0
+
+
+def test_handle_uses_resp2_encoding_before_hello_negotiation() -> None:
+    fake_socket = FakeSocket(
+        [
+            b"*2\r\n$3\r\nGET\r\n$7\r\nmissing\r\n",
+            b"",
+        ]
+    )
+    metrics = Metrics()
+    handler = SessionHandler(
+        client_socket=fake_socket,
+        protocol_handler=ProtocolHandler(),
+        command_service=create_command_service(),
+        response_encoder=RespResponseEncoder(),
+        resource_guard=create_resource_guard(),
+        metrics=metrics,
+    )
+
+    handler.handle()
+
+    assert fake_socket.sent_data == b"$-1\r\n"
+
+
+def test_handle_switches_to_resp3_after_hello() -> None:
+    fake_socket = FakeSocket(
+        [
+            b"*2\r\n$5\r\nHELLO\r\n:3\r\n",
+            b"*2\r\n$7\r\nHGETALL\r\n$4\r\nuser\r\n",
+            b"",
+        ]
+    )
+    metrics = Metrics()
+    command_service = create_command_service()
+    command_service.execute(Command(name="HSET", arguments=("user", "name", "mini")))
+    handler = SessionHandler(
+        client_socket=fake_socket,
+        protocol_handler=ProtocolHandler(),
+        command_service=command_service,
+        response_encoder=RespResponseEncoder(),
+        resource_guard=create_resource_guard(),
+        metrics=metrics,
+    )
+
+    handler.handle()
+
+    assert b"%1\r\n" in fake_socket.sent_data

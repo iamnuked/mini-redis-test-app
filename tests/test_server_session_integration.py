@@ -48,6 +48,9 @@ def run_session(request_bytes: bytes, command_service: CommandService) -> bytes:
     thread = threading.Thread(target=handler.handle)
     thread.start()
     try:
+        client_socket.sendall(b"*2\r\n$5\r\nHELLO\r\n:3\r\n")
+        hello_response = client_socket.recv(4096)
+        assert hello_response.startswith(b"%3\r\n")
         client_socket.sendall(request_bytes)
         response = client_socket.recv(4096)
     finally:

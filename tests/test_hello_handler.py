@@ -20,6 +20,20 @@ def test_handle_returns_server_metadata_for_resp3() -> None:
 def test_handle_returns_error_for_unsupported_version() -> None:
     handler = HelloHandler()
 
-    response = handler.handle(2)
+    response = handler.handle(4)
 
     assert response == RespSimpleError(message=ERR_UNSUPPORTED_PROTOCOL_VERSION)
+
+
+def test_handle_returns_server_metadata_for_resp2() -> None:
+    handler = HelloHandler()
+
+    response = handler.handle(2)
+
+    assert response == RespMap(
+        entries=(
+            (RespSimpleString(value="server"), RespSimpleString(value="mini-redis")),
+            (RespSimpleString(value="version"), RespSimpleString(value="1.0")),
+            (RespSimpleString(value="proto"), RespNumber(value=2)),
+        )
+    )

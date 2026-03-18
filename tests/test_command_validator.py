@@ -4,9 +4,11 @@ from internal.command.command import Command
 from internal.command.errors import CommandValidationError
 from internal.command.validator import CommandValidator
 from internal.protocol.resp.messages import (
+    ERR_INVALID_DB,
     ERR_INVALID_FLOAT,
     ERR_INVALID_INTEGER,
     ERR_INVALID_TTL,
+    ERR_UNSUPPORTED_CLIENT_SUBCOMMAND,
     ERR_UNSUPPORTED_COMMAND,
     ERR_WRONG_NUMBER_OF_ARGUMENTS,
 )
@@ -71,3 +73,46 @@ def test_validate_rejects_invalid_zadd_score() -> None:
 
     with pytest.raises(CommandValidationError, match=ERR_INVALID_FLOAT):
         validator.validate(Command(name="ZADD", arguments=("key", "bad", "member")))
+
+
+def test_validate_accepts_ping_without_arguments() -> None:
+    validator = CommandValidator()
+
+    validator.validate(Command(name="PING", arguments=()))
+
+
+def test_validate_accepts_select_with_db_index() -> None:
+    validator = CommandValidator()
+
+    validator.validate(Command(name="SELECT", arguments=("0",)))
+
+
+def test_validate_rejects_negative_select_db_index() -> None:
+    validator = CommandValidator()
+
+    with pytest.raises(CommandValidationError, match=ERR_INVALID_DB):
+        validator.validate(Command(name="SELECT", arguments=("-1",)))
+
+
+def test_validate_accepts_client_setname() -> None:
+    validator = CommandValidator()
+
+    validator.validate(Command(name="CLIENT", arguments=("SETNAME", "app-server")))
+
+
+def test_validate_accepts_client_maint_notifications() -> None:
+    validator = CommandValidator()
+
+    validator.validate(
+        Command(
+            name="CLIENT",
+            arguments=("MAINT_NOTIFICATIONS", "ON", "moving-endpoint-type", "internal-ip"),
+        )
+    )
+
+
+def test_validate_rejects_unsupported_client_subcommand() -> None:
+    validator = CommandValidator()
+
+    with pytest.raises(CommandValidationError, match=ERR_UNSUPPORTED_CLIENT_SUBCOMMAND):
+        validator.validate(Command(name="CLIENT", arguments=("ID", "1")))

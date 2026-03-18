@@ -39,6 +39,11 @@ class RespMap:
     entries: tuple[tuple["RespValue", "RespValue"], ...]
 
 
+@dataclass(frozen=True)
+class RespBoolean:
+    value: bool
+
+
 RespValue: TypeAlias = (
     RespSimpleString
     | RespBlobString
@@ -47,4 +52,5 @@ RespValue: TypeAlias = (
     | RespSimpleError
     | RespArray
     | RespMap
+    | RespBoolean
 )

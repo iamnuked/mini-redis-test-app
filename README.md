@@ -1,5 +1,9 @@
 # mini-redis
 
+> Compatibility note:
+> The server now accepts RESP2-compatible default connections for `redis-py` and can switch to RESP3 after `HELLO 3`.
+> The CLI still starts each command by sending `HELLO 3`, so CLI behavior remains RESP3-first.
+
 `mini-redis`는 Redis의 핵심 개념을 학습하기 위한 RESP3 기반 미니 서버/CLI 프로젝트입니다.
 
 현재 프로젝트는 다음 범위를 중심으로 구현되어 있습니다.

@@ -15,6 +15,7 @@ from internal.protocol.resp.types import RespSimpleError, RespValue
 class ProtocolHandlerResult:
     command: Command | None = None
     response: RespValue | None = None
+    protocol_version: int | None = None
 
     def has_immediate_response(self) -> bool:
         return self.response is not None
@@ -40,7 +41,10 @@ class ProtocolHandler:
 
         if command.name == "HELLO":
             version = int(command.arguments[0])
-            return ProtocolHandlerResult(response=self._hello_handler.handle(version))
+            return ProtocolHandlerResult(
+                response=self._hello_handler.handle(version),
+                protocol_version=version,
+            )
 
         return ProtocolHandlerResult(command=command)
 

@@ -1,0 +1,2 @@
+RESP_OK = "OK"
+RESP_ERR = "ERR"

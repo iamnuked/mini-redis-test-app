@@ -123,6 +123,9 @@ function cacheElements() {
   elements.bucketChart = document.getElementById("bucket-chart");
   elements.runsList = document.getElementById("runs-list");
   elements.logsList = document.getElementById("logs-list");
+  elements.logsPanel = document.getElementById("logs-panel");
+  elements.logsPanelHeader = document.getElementById("logs-panel-header");
+  elements.controlsPanel = document.getElementById("controls-panel");
   elements.requestDetail = document.getElementById("request-detail");
   elements.dbP95Node = document.getElementById("kpi-db-p95");
   elements.redisAvgNode = document.getElementById("kpi-redis-avg");
@@ -174,6 +177,7 @@ function bindEvents() {
     }
   });
   window.addEventListener("resize", resizeCharts);
+  window.addEventListener("resize", syncLogPanelHeight);
 }
 
 async function loadScenarios() {
@@ -218,12 +222,8 @@ function applyScenarioDefaults(scenarioId, options = {}) {
   const preserveUserValues = options.preserveUserValues === true;
   if (!preserveUserValues) {
     elements.runForm.elements.iteration_count.value = String(scenario.default_iteration_count || 10);
-    elements.runForm.elements.concurrency.value = String(scenario.default_concurrency || 1);
-    elements.runForm.elements.ttl_seconds.value = String(scenario.default_ttl_seconds || 30);
     elements.runForm.elements.hit_rate_step.value = String(deriveBucketStep(scenario.default_hit_rate_buckets || DEFAULT_BUCKETS));
   }
-  elements.summaryHeadline.textContent = scenario.title;
-  elements.summaryDetail.textContent = scenario.subtitle || scenario.description || elements.summaryDetail.textContent;
   renderScenarioTags(scenario);
 }
 
@@ -343,10 +343,10 @@ async function handleRunSubmit(event) {
   const payload = {
     scenario: String(formData.get("scenario") || "detail_page"),
     iteration_count: Number(formData.get("iteration_count") || 10),
-    concurrency: Number(formData.get("concurrency") || 1),
-    ttl_seconds: Number(formData.get("ttl_seconds") || 30),
+    concurrency: resolveScenarioConcurrency(String(formData.get("scenario") || "detail_page")),
+    ttl_seconds: resolveScenarioTtlSeconds(String(formData.get("scenario") || "detail_page")),
     hit_rate_buckets: hitRateBuckets,
-    include_reference: formData.get("include_reference") === "on",
+    include_reference: false,
   };
 
   if (payload.hit_rate_buckets.length === 0) {
@@ -524,6 +524,7 @@ function renderAll() {
   renderBucketChart();
   renderLogs();
   renderPlaybackStatus();
+  syncLogPanelHeight();
 }
 
 function renderControls() {
@@ -550,6 +551,9 @@ function renderControls() {
 }
 
 function renderConnectionCard() {
+  if (!elements.apiBaseValue || !elements.apiBaseMeta) {
+    return;
+  }
   const sourceLabel = {
     query: "쿼리 오버라이드",
     local_storage: "저장된 오버라이드",
@@ -565,6 +569,9 @@ function renderConnectionCard() {
 }
 
 function renderHealth() {
+  if (!elements.healthStatus || !elements.healthMeta) {
+    return;
+  }
   if (!state.health) {
     elements.healthStatus.textContent = "확인 중";
     elements.healthMeta.textContent = `${resolveApiUrl("/api/health")} 응답 대기 중`;
@@ -579,6 +586,9 @@ function renderHealth() {
 }
 
 function renderRunMeta() {
+  if (!elements.runStatus || !elements.runMeta) {
+    return;
+  }
   if (!state.currentRun) {
     elements.runStatus.textContent = "대기";
     elements.runMeta.textContent = "run 기록에서 선택하거나 새 벤치마크를 시작하세요.";
@@ -593,8 +603,7 @@ function renderRunMeta() {
 function renderHeroSpotlight() {
   if (!state.currentRun) {
     elements.heroSpotlightTitle.textContent = "결과 결론을 준비하는 중입니다.";
-    elements.heroSpotlightDetail.textContent =
-      "run을 선택하거나 새로 실행하면 지금 조건에서 어떤 경로가 우세한지 이 영역에서 먼저 요약합니다.";
+    setHeroSpotlightDetail("");
     elements.heroDbAvg.textContent = "--";
     elements.heroCacheAvg.textContent = "--";
     elements.heroLiveStatus.textContent = "대기";
@@ -606,8 +615,7 @@ function renderHeroSpotlight() {
 
   if (!summary) {
     elements.heroSpotlightTitle.textContent = `${humanizeStatus(state.currentRun.status)} 상태입니다.`;
-    elements.heroSpotlightDetail.textContent =
-      "요청과 로그가 먼저 쌓이고, 집계가 끝나면 지금 조건에서 어느 경로가 우세한지 자동으로 요약합니다.";
+    setHeroSpotlightDetail("");
     elements.heroDbAvg.textContent = "--";
     elements.heroCacheAvg.textContent = "--";
     return;
@@ -626,27 +634,32 @@ function renderHeroSpotlight() {
 
   if (speedup > 1.05) {
     elements.heroSpotlightTitle.textContent = "캐시 경로가 현재 조건에서 우세합니다.";
-    elements.heroSpotlightDetail.textContent =
-      `DB Only ${dbAvgText}, Redis 적중 ${hitAvgText || "--"}, Redis 미스 ${missAvgText || "--"}로 측정됐습니다. ` +
-      `성능 역전 기준 적중률은 ${breakEvenText}라서 발표에선 hit와 miss를 따로 보여주는 게 제일 잘 먹힙니다.`;
+    setHeroSpotlightDetail("");
     return;
   }
 
   if (speedup < 0.95) {
     elements.heroSpotlightTitle.textContent = "지금 조건에선 DB 기준선이 더 빠릅니다.";
-    elements.heroSpotlightDetail.textContent =
-      `DB Only ${dbAvgText}, Redis 적중 ${hitAvgText || "--"}, Redis 미스 ${missAvgText || "--"}입니다. ` +
-      "이 경우는 캐시 자체보다 미스 비용과 연결 비용이 더 크게 보인다는 점을 설명하기 좋습니다.";
+    setHeroSpotlightDetail("");
     return;
   }
 
   elements.heroSpotlightTitle.textContent = "두 경로가 거의 비슷한 수준입니다.";
-  elements.heroSpotlightDetail.textContent =
-    `DB Only ${dbAvgText}, Redis 적중 ${hitAvgText || "--"}, Redis 미스 ${missAvgText || "--"}입니다. ` +
-    `성능 역전 기준 적중률 ${breakEvenText} 기준으로 경계 조건을 설명하기 좋은 run입니다.`;
+  setHeroSpotlightDetail("");
+}
+
+function setHeroSpotlightDetail(message) {
+  if (!elements.heroSpotlightDetail) {
+    return;
+  }
+  elements.heroSpotlightDetail.textContent = message;
+  elements.heroSpotlightDetail.classList.toggle("hidden", !message);
 }
 
 function renderSummary() {
+  if (!elements.summaryHeadline || !elements.summaryDetail || !elements.metaScenario || !elements.metaConfig || !elements.metaReplaySource) {
+    return;
+  }
   const selectedScenario = state.scenarios.find((scenario) => scenario.scenario_id === elements.runForm?.elements?.scenario?.value);
   if (!state.currentRun) {
     elements.summaryHeadline.textContent = selectedScenario?.title || "run을 선택하거나 새로 실행하면 보드가 채워집니다.";
@@ -706,6 +719,16 @@ function renderScenarioTags(scenario) {
   if (elements.scenarioTagTwo) {
     elements.scenarioTagTwo.textContent = tags[1] || "웜 캐시 비교";
   }
+}
+
+function resolveScenarioConcurrency(scenarioId) {
+  const scenario = state.scenarios.find((item) => item.scenario_id === scenarioId);
+  return Number(scenario?.default_concurrency || 1);
+}
+
+function resolveScenarioTtlSeconds(scenarioId) {
+  const scenario = state.scenarios.find((item) => item.scenario_id === scenarioId);
+  return Number(scenario?.default_ttl_seconds || 30);
 }
 
 function renderKpis() {
@@ -1216,6 +1239,27 @@ function resizeCharts() {
       chart.resize();
     }
   }
+}
+
+function syncLogPanelHeight() {
+  if (!elements.logsPanel || !elements.controlsPanel || !elements.logsList) {
+    return;
+  }
+  if (window.innerWidth < 1280) {
+    elements.logsPanel.style.height = "";
+    elements.logsList.style.maxHeight = "";
+    return;
+  }
+
+  const controlsHeight = elements.controlsPanel.getBoundingClientRect().height;
+  const panelStyles = window.getComputedStyle(elements.logsPanel);
+  const headerHeight = elements.logsPanelHeader?.getBoundingClientRect().height || 0;
+  const paddingTop = Number.parseFloat(panelStyles.paddingTop || "0");
+  const paddingBottom = Number.parseFloat(panelStyles.paddingBottom || "0");
+  const logsHeight = Math.max(180, controlsHeight - headerHeight - paddingTop - paddingBottom);
+
+  elements.logsPanel.style.height = `${controlsHeight}px`;
+  elements.logsList.style.maxHeight = `${logsHeight}px`;
 }
 
 function buildLatencySeries(name, data, color, lineType = "solid") {
@@ -2399,6 +2443,9 @@ function emptyChartMarkup(title, description) {
 }
 
 function setScenarioNote(message) {
+  if (!elements.scenarioNote) {
+    return;
+  }
   elements.scenarioNote.textContent = message;
 }
 

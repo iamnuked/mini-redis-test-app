@@ -1260,7 +1260,6 @@ select:focus-visible {
 
 .chart-frame,
 .runs-list,
-.log-list,
 .detail-card {
   min-height: 280px;
   border-radius: var(--radius-lg);
@@ -1778,13 +1777,14 @@ body {
 }
 
 .runs-list,
-.log-list,
 .detail-card {
   min-height: 220px;
 }
 
 .log-list {
-  max-height: 540px;
+  min-height: 0;
+  height: 100%;
+  max-height: none;
   overflow-y: auto;
   padding-right: 6px;
 }

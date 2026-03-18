@@ -26,45 +26,6 @@
         </div>
       </header>
 
-      <section class="wire-panel grid gap-4 rounded-[28px] border border-base-300/70 bg-base-100/90 p-5 shadow-lg shadow-slate-900/5 md:grid-cols-[minmax(0,1.5fr)_minmax(320px,0.9fr)] md:p-6">
-        <div class="space-y-4">
-          <div class="space-y-2">
-            <p class="text-xs font-semibold uppercase tracking-[0.24em] text-primary">현재 데모 시나리오</p>
-            <div class="flex flex-wrap items-center gap-3">
-              <h2 class="text-2xl font-black tracking-[-0.04em] md:text-3xl" id="summary-headline">run을 선택하거나 새로 실행하면 보드가 채워집니다.</h2>
-            </div>
-            <p class="max-w-4xl text-sm leading-7 text-base-content/70" id="summary-detail">
-              데이터가 들어오면 현재 경로 분포, 성능 역전 기준 적중률, 캐시 경로가 실제로 이득을 주는지 이 영역에서 바로 설명합니다.
-            </p>
-          </div>
-          <div class="flex flex-wrap gap-2">
-            <span class="badge badge-lg rounded-2xl border-base-300 bg-base-200 px-4 py-4 text-sm font-medium" id="meta-scenario">상세 페이지</span>
-            <span class="badge badge-lg rounded-2xl border-base-300 bg-base-200 px-4 py-4 text-sm font-medium" id="scenario-tag-one">검색 부하</span>
-            <span class="badge badge-lg rounded-2xl border-base-300 bg-base-200 px-4 py-4 text-sm font-medium" id="scenario-tag-two">웜 캐시 비교</span>
-            <span class="badge badge-lg rounded-2xl border-base-300 bg-base-200 px-4 py-4 text-sm font-medium" id="meta-config">10회 / 동시성 1 / ttl 30초</span>
-            <span class="badge badge-lg rounded-2xl border-base-300 bg-base-200 px-4 py-4 text-sm font-medium" id="meta-replay-source">events[] 순서</span>
-          </div>
-        </div>
-
-        <div class="grid gap-3 md:grid-cols-1 lg:grid-cols-3">
-          <article class="stat rounded-[24px] border border-base-300 bg-base-200/80">
-            <div class="stat-title">미니 레디스 상태</div>
-            <div class="stat-value text-2xl" id="health-status">확인 중</div>
-            <div class="stat-desc whitespace-normal" id="health-meta">로컬 컨트롤러 연결 준비 중</div>
-          </article>
-          <article class="stat rounded-[24px] border border-base-300 bg-base-200/80">
-            <div class="stat-title">현재 Run</div>
-            <div class="stat-value text-2xl" id="run-status">대기</div>
-            <div class="stat-desc whitespace-normal" id="run-meta">선택된 run이 없습니다</div>
-          </article>
-          <article class="stat rounded-[24px] border border-base-300 bg-base-200/80">
-            <div class="stat-title">API 기준 경로</div>
-            <div class="stat-value text-xl" id="api-base-value">/api</div>
-            <div class="stat-desc whitespace-normal" id="api-base-meta">같은 origin 모드</div>
-          </article>
-        </div>
-      </section>
-
       <section class="wire-panel rounded-[28px] border border-base-300/70 bg-base-100/90 p-5 shadow-lg shadow-slate-900/5 md:p-6">
         <div class="mb-5 flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
           <div>
@@ -131,8 +92,8 @@
         </div>
       </section>
 
-      <section class="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(360px,0.95fr)]">
-        <section class="wire-panel rounded-[28px] border border-base-300/70 bg-base-100/90 p-5 shadow-lg shadow-slate-900/5 md:p-6">
+      <section class="items-stretch grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(360px,0.95fr)]">
+        <section class="wire-panel h-full rounded-[28px] border border-base-300/70 bg-base-100/90 p-5 shadow-lg shadow-slate-900/5 md:p-6" id="controls-panel">
           <div class="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
               <p class="text-xs font-semibold uppercase tracking-[0.24em] text-base-content/55">실험 설정 패널</p>
@@ -146,7 +107,7 @@
             </div>
           </div>
 
-          <form id="run-form" class="grid gap-4 md:grid-cols-3">
+          <form id="run-form" class="grid gap-4 md:grid-cols-2">
             <label class="form-control">
               <div class="label"><span class="label-text font-semibold">시나리오</span></div>
               <select class="select select-bordered rounded-2xl" name="scenario">
@@ -159,16 +120,6 @@
               <input class="input input-bordered rounded-2xl" name="iteration_count" type="number" min="1" value="10">
             </label>
 
-            <label class="form-control">
-              <div class="label"><span class="label-text font-semibold">동시 요청 수</span></div>
-              <input class="input input-bordered rounded-2xl" name="concurrency" type="number" min="1" value="1">
-            </label>
-
-            <label class="form-control">
-              <div class="label"><span class="label-text font-semibold">TTL</span></div>
-              <input class="input input-bordered rounded-2xl" name="ttl_seconds" type="number" min="1" value="30">
-            </label>
-
             <label class="form-control md:col-span-2">
               <div class="label"><span class="label-text font-semibold">적중률 간격</span></div>
               <input class="input input-bordered rounded-2xl" name="hit_rate_step" type="number" min="1" max="100" step="1" value="10" placeholder="10">
@@ -176,19 +127,6 @@
                 <span class="label-text-alt text-base-content/55">0부터 100까지 이 간격으로 버킷을 자동 생성합니다. 예: 10이면 0, 10, 20 ... 100</span>
               </div>
             </label>
-
-            <div class="wire-option-card rounded-[24px] border border-base-300 bg-base-200/70 p-4 md:col-span-3">
-              <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <h3 class="font-bold">Redis 전용 기준선</h3>
-                  <p class="mt-1 text-sm leading-6 text-base-content/60">필요할 때만 reference lane을 추가해서 발표용 참고선을 함께 봅니다.</p>
-                </div>
-                <label class="label cursor-pointer justify-start gap-3 md:justify-end">
-                  <span class="label-text">기준선 레인 포함</span>
-                  <input class="toggle toggle-primary" name="include_reference" type="checkbox">
-                </label>
-              </div>
-            </div>
 
             <div class="wire-option-card rounded-[24px] border border-base-300 bg-base-200/70 p-4 md:col-span-2">
               <div class="flex items-start justify-between gap-4">
@@ -219,19 +157,15 @@
               </div>
             </div>
 
-            <div class="alert wire-note rounded-[24px] border border-base-300 bg-base-200/70 md:col-span-1" id="scenario-note">
-              현재 v1 runner는 동시성 값을 메타데이터로만 저장하고 실제 실행은 순차 처리합니다.
-              지금은 가짜 병렬 연출보다 실제 이벤트 흐름을 정확히 연결하는 데 집중합니다.
-            </div>
           </form>
         </section>
 
-        <aside class="wire-panel rounded-[28px] border border-base-300/70 bg-base-100/90 p-5 shadow-lg shadow-slate-900/5 md:p-6">
-          <div class="mb-4">
+        <aside class="wire-panel flex h-full min-h-0 flex-col self-stretch rounded-[28px] border border-base-300/70 bg-base-100/90 p-5 shadow-lg shadow-slate-900/5 md:p-6" id="logs-panel">
+          <div class="mb-4" id="logs-panel-header">
             <p class="text-xs font-semibold uppercase tracking-[0.24em] text-base-content/55">실행 로그</p>
             <h2 class="mt-1 text-2xl font-black tracking-[-0.04em]">라이프사이클 콘솔</h2>
           </div>
-          <div id="logs-list" class="log-list"></div>
+          <div id="logs-list" class="log-list flex-1 min-h-0"></div>
         </aside>
       </section>
     </div>

@@ -1,100 +1,143 @@
-import socket
 from unittest import mock
 
 from internal.config.runtime_config import RuntimeConfig
-from internal.observability.logger import Logger
 from internal.observability.metrics import Metrics
-from internal.server.server import MiniRedisServer
 from internal.server.shutdown import ShutdownManager
+from internal.server.server import MiniRedisServer
+
+
+class FakeClientSocket:
+    def __init__(self) -> None:
+        self.timeout_history: list[float] = []
+
+    def settimeout(self, timeout: float) -> None:
+        self.timeout_history.append(timeout)
+
+    def __enter__(self) -> "FakeClientSocket":
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        return None
+
+
+class FakeServerSocket:
+    def __init__(self, accept_sequence: list[object]) -> None:
+        self.accept_sequence = list(accept_sequence)
+        self.timeout_history: list[float] = []
+        self.bound_address = None
+        self.listening = False
+        self.closed = False
+
+    def setsockopt(self, *args) -> None:
+        return None
+
+    def bind(self, address) -> None:
+        self.bound_address = address
+
+    def listen(self) -> None:
+        self.listening = True
+
+    def settimeout(self, timeout: float) -> None:
+        self.timeout_history.append(timeout)
+
+    def accept(self):
+        next_item = self.accept_sequence.pop(0)
+        if isinstance(next_item, BaseException):
+            raise next_item
+        return next_item
+
+    def close(self) -> None:
+        self.closed = True
+
+    def __enter__(self) -> "FakeServerSocket":
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        return None
 
 
 def test_run_starts_and_stops_sweeper_and_applies_idle_timeout() -> None:
     config = RuntimeConfig.default()
-    logger = Logger()
-    metrics = Metrics()
     shutdown_manager = ShutdownManager()
-    accepted_client = mock.Mock(spec=socket.socket)
-    accepted_client.__enter__ = mock.Mock(return_value=accepted_client)
-    accepted_client.__exit__ = mock.Mock(return_value=None)
-    fake_server_socket = mock.Mock(spec=socket.socket)
-    fake_server_socket.__enter__ = mock.Mock(return_value=fake_server_socket)
-    fake_server_socket.__exit__ = mock.Mock(return_value=None)
-    fake_server_socket.accept.side_effect = [
-        (accepted_client, ("127.0.0.1", 6379)),
-        TimeoutError(),
-    ]
+    metrics = Metrics()
+    client_socket = FakeClientSocket()
+    server_socket = FakeServerSocket(
+        accept_sequence=[
+            (client_socket, ("127.0.0.1", 12345)),
+        ]
+    )
+    sweeper = mock.Mock()
+    handler_instance = mock.Mock()
 
-    with mock.patch("internal.server.server.socket.socket", return_value=fake_server_socket), \
-        mock.patch("internal.server.server.SessionHandler") as session_handler_cls, \
-        mock.patch("internal.server.server.ExpirationSweeper") as sweeper_cls:
-        session_handler = session_handler_cls.return_value
+    def handle_side_effect() -> None:
+        shutdown_manager.request_shutdown()
 
-        def stop_after_handle() -> None:
-            shutdown_manager.request_shutdown()
+    handler_instance.handle.side_effect = handle_side_effect
 
-        session_handler.handle.side_effect = stop_after_handle
-        sweeper = sweeper_cls.return_value
+    with mock.patch("internal.server.server.socket.socket", return_value=server_socket):
+        with mock.patch(
+            "internal.server.server.ExpirationSweeper",
+            return_value=sweeper,
+        ):
+            with mock.patch(
+                "internal.server.server.SessionHandler",
+                return_value=handler_instance,
+            ) as session_handler_class:
+                server = MiniRedisServer(
+                    config=config,
+                    metrics=metrics,
+                    shutdown_manager=shutdown_manager,
+                )
+                server.run()
 
-        server = MiniRedisServer(
-            config=config,
-            logger=logger,
-            metrics=metrics,
-            shutdown_manager=shutdown_manager,
-        )
-        server.run()
-
-    fake_server_socket.bind.assert_called_once_with((config.host, config.port))
-    accepted_client.settimeout.assert_called_once_with(config.idle_timeout_seconds)
     sweeper.start.assert_called_once()
     sweeper.stop.assert_called_once()
+    assert server_socket.bound_address == (config.host, config.port)
+    assert client_socket.timeout_history == [config.idle_timeout_seconds]
+    session_handler_class.assert_called_once()
+    assert session_handler_class.call_args.kwargs["read_timeout_seconds"] == (
+        config.read_timeout_seconds
+    )
+    assert session_handler_class.call_args.kwargs["write_timeout_seconds"] == (
+        config.write_timeout_seconds
+    )
 
 
 def test_run_rejects_connection_when_limit_is_reached() -> None:
     config = RuntimeConfig.default()
-    logger = Logger()
-    metrics = Metrics()
     shutdown_manager = ShutdownManager()
-    metrics.increment_active_connections()
-    metrics.increment_active_connections()
-    accepted_client = mock.Mock(spec=socket.socket)
-    accepted_client.__enter__ = mock.Mock(return_value=accepted_client)
-    accepted_client.__exit__ = mock.Mock(return_value=None)
-    fake_server_socket = mock.Mock(spec=socket.socket)
-    fake_server_socket.__enter__ = mock.Mock(return_value=fake_server_socket)
-    fake_server_socket.__exit__ = mock.Mock(return_value=None)
-    limited_config = RuntimeConfig.default()
-    limited_config = limited_config.__class__(
-        **{
-            **limited_config.__dict__,
-            "max_connections": 2,
-        }
+    metrics = Metrics()
+    metrics.active_connections = config.max_connections
+    client_socket = FakeClientSocket()
+    server_socket = FakeServerSocket(
+        accept_sequence=[
+            (client_socket, ("127.0.0.1", 12345)),
+            OSError("shutdown"),
+        ]
     )
+    sweeper = mock.Mock()
 
-    with mock.patch("internal.server.server.socket.socket", return_value=fake_server_socket), \
-        mock.patch("internal.server.server.SessionHandler") as session_handler_cls, \
-        mock.patch("internal.server.server.ExpirationSweeper"):
-        accept_calls = iter(
-            [
-                (accepted_client, ("127.0.0.1", 6379)),
-                TimeoutError(),
-            ]
-        )
+    def error_side_effect(message: str) -> None:
+        if message == "connection limit exceeded":
+            shutdown_manager.request_shutdown()
 
-        def accept_side_effect():
-            result = next(accept_calls)
-            if isinstance(result, BaseException):
-                shutdown_manager.request_shutdown()
-                raise result
-            return result
+    logger = mock.Mock()
+    logger.error.side_effect = error_side_effect
 
-        fake_server_socket.accept.side_effect = accept_side_effect
-        server = MiniRedisServer(
-            config=limited_config,
-            logger=logger,
-            metrics=metrics,
-            shutdown_manager=shutdown_manager,
-        )
-        server.run()
+    with mock.patch("internal.server.server.socket.socket", return_value=server_socket):
+        with mock.patch(
+            "internal.server.server.ExpirationSweeper",
+            return_value=sweeper,
+        ):
+            with mock.patch("internal.server.server.SessionHandler") as session_handler_class:
+                server = MiniRedisServer(
+                    config=config,
+                    logger=logger,
+                    metrics=metrics,
+                    shutdown_manager=shutdown_manager,
+                )
+                server.run()
 
-    session_handler_cls.assert_not_called()
-    assert metrics.errors_total >= 1
+    session_handler_class.assert_not_called()
+    assert metrics.errors_total == 1
+    logger.error.assert_any_call("connection limit exceeded")

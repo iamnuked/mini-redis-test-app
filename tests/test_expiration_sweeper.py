@@ -1,3 +1,6 @@
+import threading
+import time
+
 from internal.clock.fake_clock import FakeClock
 from internal.expiration.expiration_sweeper import ExpirationSweeper
 from internal.repository.in_memory_store import InMemoryStoreRepository
@@ -38,4 +41,46 @@ def test_start_and_stop_update_running_state() -> None:
     assert sweeper.is_running() is True
 
     sweeper.stop()
+    assert sweeper.is_running() is False
+
+
+def test_start_is_idempotent_when_already_running() -> None:
+    sweeper = ExpirationSweeper(
+        clock=FakeClock(current_time=0.0),
+        store_repository=InMemoryStoreRepository(),
+        ttl_repository=InMemoryTtlRepository(),
+        sweep_interval_seconds=1,
+        sweep_batch_size=10,
+    )
+
+    sweeper.start()
+    first_worker = sweeper._worker
+    sweeper.start()
+
+    assert sweeper._worker is first_worker
+    sweeper.stop()
+
+
+def test_background_worker_runs_sweep_loop() -> None:
+    sweeper = ExpirationSweeper(
+        clock=FakeClock(current_time=0.0),
+        store_repository=InMemoryStoreRepository(),
+        ttl_repository=InMemoryTtlRepository(),
+        sweep_interval_seconds=0.01,
+        sweep_batch_size=10,
+    )
+    called = threading.Event()
+
+    def fake_sweep_once() -> int:
+        called.set()
+        return 0
+
+    sweeper.sweep_once = fake_sweep_once  # type: ignore[method-assign]
+
+    sweeper.start()
+    try:
+        assert called.wait(timeout=0.2) is True
+    finally:
+        sweeper.stop()
+
     assert sweeper.is_running() is False

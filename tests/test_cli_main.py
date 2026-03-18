@@ -41,6 +41,18 @@ class FakeSocket:
         self.close()
 
 
+class FakeConnectionFactory:
+    def __init__(self, sockets):
+        self._sockets = list(sockets)
+        self.calls = []
+
+    def __call__(self, address, timeout):
+        self.calls.append((address, timeout))
+        if not self._sockets:
+            raise AssertionError("unexpected extra connection attempt")
+        return self._sockets.pop(0)
+
+
 class CliMainTest(unittest.TestCase):
     def setUp(self) -> None:
         self.cli_main = load_cli_main_module()
@@ -81,13 +93,15 @@ class CliMainTest(unittest.TestCase):
     def test_main_sends_hello_then_command_and_renders_success(self) -> None:
         stdout = io.StringIO()
         stderr = io.StringIO()
-        fake_socket = FakeSocket(HELLO_RESPONSE + b"$5\r\nvalue\r\n")
+        hello_socket = FakeSocket(HELLO_RESPONSE)
+        command_socket = FakeSocket(b"$5\r\nvalue\r\n")
+        connection_factory = FakeConnectionFactory([hello_socket, command_socket])
 
         with mock.patch.object(
             self.cli_main.socket,
             "create_connection",
-            return_value=fake_socket,
-        ) as create_connection:
+            side_effect=connection_factory,
+        ):
             exit_code = self.cli_main.main(
                 [
                     "--host",
@@ -105,16 +119,35 @@ class CliMainTest(unittest.TestCase):
         self.assertEqual(stdout.getvalue(), "value\n")
         self.assertEqual(stderr.getvalue(), "")
         self.assertEqual(
-            bytes(fake_socket.sent),
-            self.cli_main.build_hello_frame()
-            + self.cli_main.build_command_frame("GET", ["mykey"]),
-        )
-        create_connection.assert_called_once_with(
-            (defaults.DEFAULT_HOST, defaults.DEFAULT_PORT),
-            timeout=defaults.DEFAULT_CONNECT_TIMEOUT_SECONDS,
+            bytes(hello_socket.sent),
+            self.cli_main.build_hello_frame(),
         )
         self.assertEqual(
-            fake_socket.timeout,
+            bytes(command_socket.sent),
+            self.cli_main.build_command_frame("GET", ["mykey"]),
+        )
+        self.assertEqual(
+            connection_factory.calls,
+            [
+                (
+                    (defaults.DEFAULT_HOST, defaults.DEFAULT_PORT),
+                    defaults.DEFAULT_CONNECT_TIMEOUT_SECONDS,
+                ),
+                (
+                    (defaults.DEFAULT_HOST, defaults.DEFAULT_PORT),
+                    defaults.DEFAULT_CONNECT_TIMEOUT_SECONDS,
+                ),
+            ],
+        )
+        self.assertEqual(
+            hello_socket.timeout,
+            max(
+                defaults.DEFAULT_READ_TIMEOUT_SECONDS,
+                defaults.DEFAULT_WRITE_TIMEOUT_SECONDS,
+            ),
+        )
+        self.assertEqual(
+            command_socket.timeout,
             max(
                 defaults.DEFAULT_READ_TIMEOUT_SECONDS,
                 defaults.DEFAULT_WRITE_TIMEOUT_SECONDS,
@@ -124,12 +157,14 @@ class CliMainTest(unittest.TestCase):
     def test_main_returns_server_error_when_server_responds_with_error(self) -> None:
         stdout = io.StringIO()
         stderr = io.StringIO()
-        fake_socket = FakeSocket(HELLO_RESPONSE + b"-ERR unsupported command\r\n")
+        hello_socket = FakeSocket(HELLO_RESPONSE)
+        command_socket = FakeSocket(b"-ERR unsupported command\r\n")
+        connection_factory = FakeConnectionFactory([hello_socket, command_socket])
 
         with mock.patch.object(
             self.cli_main.socket,
             "create_connection",
-            return_value=fake_socket,
+            side_effect=connection_factory,
         ):
             exit_code = self.cli_main.main(
                 [
@@ -147,7 +182,43 @@ class CliMainTest(unittest.TestCase):
         self.assertEqual(stdout.getvalue(), "")
         self.assertEqual(stderr.getvalue(), "ERR unsupported command\n")
         self.assertEqual(
-            bytes(fake_socket.sent),
-            self.cli_main.build_hello_frame()
-            + self.cli_main.build_command_frame("NOPE", []),
+            bytes(hello_socket.sent),
+            self.cli_main.build_hello_frame(),
         )
+        self.assertEqual(
+            bytes(command_socket.sent),
+            self.cli_main.build_command_frame("NOPE", []),
+        )
+
+    def test_main_stops_after_hello_error_without_sending_command(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        hello_socket = FakeSocket(b"-ERR unsupported protocol version\r\n")
+        connection_factory = FakeConnectionFactory([hello_socket])
+
+        with mock.patch.object(
+            self.cli_main.socket,
+            "create_connection",
+            side_effect=connection_factory,
+        ):
+            exit_code = self.cli_main.main(
+                [
+                    "--host",
+                    defaults.DEFAULT_HOST,
+                    "--port",
+                    str(defaults.DEFAULT_PORT),
+                    "GET",
+                    "mykey",
+                ],
+                stdout=stdout,
+                stderr=stderr,
+            )
+
+        self.assertEqual(exit_code, defaults.CLI_EXIT_SERVER_ERROR)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertEqual(stderr.getvalue(), "ERR unsupported protocol version\n")
+        self.assertEqual(
+            bytes(hello_socket.sent),
+            self.cli_main.build_hello_frame(),
+        )
+        self.assertEqual(len(connection_factory.calls), 1)

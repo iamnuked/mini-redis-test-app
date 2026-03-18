@@ -191,10 +191,9 @@ def render_error(response: RespObject) -> str:
     return f"ERR {message}"
 
 
-def execute_command(
+def execute_request(
     config: RuntimeConfig,
-    command: str,
-    command_arguments: Sequence[str],
+    request_frame: bytes,
 ) -> RespObject:
     client_socket = socket.create_connection(
         (config.host, config.port),
@@ -207,15 +206,25 @@ def execute_command(
         )
         stream = client_socket.makefile("rb")
         try:
-            client_socket.sendall(build_hello_frame())
-            hello_response = read_response(stream)
-            if hello_response.kind == "error":
-                return hello_response
-
-            client_socket.sendall(build_command_frame(command, command_arguments))
+            client_socket.sendall(request_frame)
             return read_response(stream)
         finally:
             stream.close()
+
+
+def execute_command(
+    config: RuntimeConfig,
+    command: str,
+    command_arguments: Sequence[str],
+) -> RespObject:
+    hello_response = execute_request(config=config, request_frame=build_hello_frame())
+    if hello_response.kind == "error":
+        return hello_response
+
+    return execute_request(
+        config=config,
+        request_frame=build_command_frame(command, command_arguments),
+    )
 
 
 def main(

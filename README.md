@@ -10,6 +10,7 @@
 
 - TCP 소켓 기반 서버
 - CLI 클라이언트
+- Arena 비교용 HTTP gateway 및 대시보드
 - RESP3 `HELLO 3` 협상
 - 문자열 키-값 저장
 - `SET`, `GET`, `DEL`, `EXPIRE`, `TTL`
@@ -105,13 +106,23 @@ CLI 테스트만 실행:
 python -m pytest -q tests\test_cli_main.py
 ```
 
+Arena 테스트만 실행:
+
+```powershell
+python -m pytest -q tests\arena
+```
+
 ## 프로젝트 구조
 
 ```text
 cmd/
+  arena_gateway/
+  arena_lane_a/
+  arena_lane_b/
   mini_redis_server/
   mini_redis_cli/
 internal/
+  arena/
   clock/
   command/
   config/
@@ -125,6 +136,7 @@ internal/
   service/
 docs/
 tests/
+web/
 ```
 
 ## 아키텍처 개요
@@ -136,6 +148,10 @@ tests/
 주요 계층 역할:
 
 - `cmd`: 서버/CLI 실행 진입점
+- `cmd/arena_gateway`: Arena HTTP gateway 실행 진입점
+- `cmd/arena_lane_a`: Redis + Mongo lane 실행 진입점
+- `cmd/arena_lane_b`: Mongo only lane 실행 진입점
+- `internal/arena`: Arena 비교 로직, 시나리오, 이벤트, gateway, lane 서비스
 - `internal/protocol/resp`: RESP3 파싱/직렬화
 - `internal/command`: 명령 모델, 파싱, 검증
 - `internal/service`: 비즈니스 로직
@@ -194,22 +210,86 @@ mini-redis> quit
 - [RESP3 API 명세서](docs/api-spec.md)
 - [서버 런타임 설정 문서](docs/server-runtime.md)
 - [구현 계획 문서](docs/implementation-plan.md)
-- [협업 규칙 문서](docs/collaboration-rules.md)
-- [업무 분장 문서](docs/team-work-allocation.md)
-- [Git 워크플로우 가이드](docs/git-workflow-guide.md)
-
-## 협업 및 브랜치 전략
-
-이 저장소는 다음 전략을 사용합니다.
-
-- `main`: 안정 브랜치
-- `dev`: 통합 개발 브랜치
-- 작업 브랜치: 이슈 기반 feature branch
-
-자세한 규칙은 [협업 규칙 문서](docs/collaboration-rules.md)와 [Git 워크플로우 가이드](docs/git-workflow-guide.md)를 참고하세요.
+- [Arena 시작 문서](docs/arena/README.md)
+- [Arena 최종 방향](docs/arena/final-direction.md)
+- [Arena mini-redis 연동 메모](docs/arena/mini-redis-integration.md)
+- [Arena benchmark 구조](docs/arena/benchmark-architecture.md)
+- [Arena 구현 참조 문서](docs/arena/implementation-reference.md)
+- [Arena 로컬 Mongo 실행 가이드](docs/arena/local-mongo-runbook.md)
 
 ## 참고 사항
 
 - 이 프로젝트는 학습용 mini-redis입니다.
 - 문서가 구현보다 우선합니다.
 - 세부 명세는 `docs` 문서를 기준으로 관리합니다.
+
+## Arena 빠른 시작
+
+Arena는 다음 구성으로 동작합니다.
+
+- `gateway`
+- `lane-a` (`mini-redis + MongoDB`)
+- `lane-b` (`MongoDB only`)
+- `mini-redis`
+
+속도 비교 기준 구조는 [docs/arena/benchmark-architecture.md](docs/arena/benchmark-architecture.md)를 따른다.
+
+### 1. 로컬 스크립트로 전체 실행
+
+Mongo 데이터 디렉터리를 저장소 내부 `.local/arena`에 두고 전체 stack을 한 번에 올리려면:
+
+```bash
+./scripts/arena-local-up.sh
+./scripts/arena-local-status.sh
+```
+
+내릴 때:
+
+```bash
+./scripts/arena-local-down.sh
+```
+
+세부 기준은 [docs/arena/local-mongo-runbook.md](docs/arena/local-mongo-runbook.md)를 따른다.
+
+### 2. Docker Compose로 전체 실행
+
+```bash
+docker compose -f deploy/docker-compose.arena.yml up --build
+```
+
+실행 후 포트:
+
+- `8000`: gateway + dashboard
+- `8001`: lane-a
+- `8002`: lane-b
+- `6379`: mini-redis
+- `27017`: mongo-a
+- `27018`: mongo-b
+
+브라우저에서 `http://127.0.0.1:8000`을 열면 대시보드를 확인할 수 있습니다.
+
+### 3. 로컬에서 개별 실행
+
+`mini-redis`:
+
+```bash
+PYTHONPATH=. python cmd/mini_redis_server/main.py
+```
+
+`lane-a`:
+
+```bash
+PYTHONPATH=. ARENA_REDIS_BACKEND=redis_py ARENA_MONGO_BACKEND=pymongo MONGO_URI=mongodb://127.0.0.1:27017 MONGO_DB_NAME=arena_lane_a python cmd/arena_lane_a/main.py
+```
+
+`lane-b`:
+
+```bash
+PYTHONPATH=. ARENA_MONGO_BACKEND=pymongo MONGO_URI=mongodb://127.0.0.1:27018 MONGO_DB_NAME=arena_lane_b python cmd/arena_lane_b/main.py
+```
+
+`gateway`:
+
+```bash
+PYTHONPATH=. ARENA_LANE_A_BASE_URL=http://127.0.0.1:8001 ARENA_LANE_B_BASE_URL=http://127.0.0.1:8002 python cmd/arena_gateway/main.py
+```

@@ -200,6 +200,37 @@ function bindEvents() {
       startReplay();
     }
   });
+  bindTabs();
+}
+
+function bindTabs() {
+  document.querySelectorAll(".tab-btn[data-target]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const targetId = btn.dataset.target;
+      document.querySelectorAll(".tab-btn").forEach((b) => {
+        b.classList.remove("tab-btn--active", "active");
+      });
+      document.querySelectorAll(".tab-pane").forEach((pane) => {
+        pane.classList.remove("tab-pane--active");
+      });
+      btn.classList.add("tab-btn--active");
+      const pane = document.getElementById(targetId);
+      if (pane) pane.classList.add("tab-pane--active");
+    });
+  });
+}
+
+function activateTab(targetId) {
+  document.querySelectorAll(".tab-btn").forEach((b) => {
+    b.classList.remove("tab-btn--active", "active");
+  });
+  document.querySelectorAll(".tab-pane").forEach((pane) => {
+    pane.classList.remove("tab-pane--active");
+  });
+  const btn = document.querySelector(`.tab-btn[data-target="${targetId}"]`);
+  const pane = document.getElementById(targetId);
+  if (btn) btn.classList.add("tab-btn--active");
+  if (pane) pane.classList.add("tab-pane--active");
 }
 
 async function handleRefreshAll() {
@@ -351,7 +382,7 @@ function toggleReplay() {
   }
 
   if (state.requests.length === 0) {
-    setScenarioNote("재생을 하려면 먼저 요청 이벤트가 필요합니다. 새 run을 실행하거나 완료된 run을 선택하세요.");
+    setScenarioNote("재생을 하려면 먼저 요청 이벤트가 필요합니다. 먼저 벤치마크 실행을 시작하세요.");
     return;
   }
 
@@ -442,7 +473,7 @@ function renderHealth() {
 function renderRunMeta() {
   if (!state.currentRun) {
     elements.runStatus.textContent = "대기";
-    elements.runMeta.textContent = "run 기록에서 선택하거나 새 벤치마크를 시작하세요.";
+    elements.runMeta.textContent = "벤치마크 실행을 시작하세요.";
     return;
   }
 
@@ -453,9 +484,9 @@ function renderRunMeta() {
 
 function renderHeroSpotlight() {
   if (!state.currentRun) {
-    elements.heroSpotlightTitle.textContent = "결과 결론을 준비하는 중입니다.";
+    elements.heroSpotlightTitle.textContent = "벤치마크 결론을 준비하는 중입니다.";
     elements.heroSpotlightDetail.textContent =
-      "run을 선택하거나 새로 실행하면 지금 조건에서 어떤 경로가 우세한지 이 영역에서 먼저 요약합니다.";
+      "벤치마크 실행을 시작하면 지금 조건에서 어떤 경로가 우세한지 이 영역에서 먼저 요약합니다.";
     elements.heroDbAvg.textContent = "--";
     elements.heroCacheAvg.textContent = "--";
     elements.heroLiveStatus.textContent = "대기";
@@ -509,7 +540,7 @@ function renderHeroSpotlight() {
 
 function renderSummary() {
   if (!state.currentRun) {
-    elements.summaryHeadline.textContent = "run을 선택하거나 새로 실행하면 보드가 채워집니다.";
+    elements.summaryHeadline.textContent = "벤치마크 실행을 시작하면 보드가 채워집니다.";
     elements.summaryDetail.textContent =
       "데이터가 들어오면 현재 경로 분포, 성능 역전 기준 적중률, 캐시 경로가 실제로 이득을 주는지 여기서 바로 설명합니다.";
     elements.metaScenario.textContent = humanizeScenario("detail_page");
@@ -679,6 +710,7 @@ function renderFlowBoard() {
       state.selectedRequestId = token.dataset.requestId;
       renderFlowBoard();
       renderRequestDetail();
+      activateTab("tab-detail");
     });
   }
 }
@@ -1376,39 +1408,57 @@ function renderTimelineSeriesMarkup(request, stageRows, maxTime, width, height, 
     return "";
   }
 
-  const points = [];
-  let previousY = null;
-  windows.forEach((window, index) => {
-    const y = timelineYForStage(window.stage, stageRows, padding);
-    const startX = timelineXForTime(window.startMs, maxTime, width, padding);
-    const endX = timelineXForTime(window.endMs, maxTime, width, padding);
-    if (index === 0) {
-      points.push(`M ${startX} ${y}`);
-    } else {
-      points.push(`L ${startX} ${previousY ?? y}`);
-      points.push(`L ${startX} ${y}`);
-    }
-    points.push(`L ${Math.max(endX, startX + 2)} ${y}`);
-    previousY = y;
+  const toneClass = `timeline-${requestTokenTone(request)}`;
+  const classStr = `${toneClass} ${isPrimary ? "primary" : "secondary"}`;
+
+  // 각 단계의 픽셀 좌표를 먼저 계산합니다 (최소 폭 6px 보장).
+  const MIN_SEGMENT_PX = 6;
+  const segments = windows.map((win) => {
+    const y      = timelineYForStage(win.stage, stageRows, padding);
+    const startX = timelineXForTime(win.startMs, maxTime, width, padding);
+    const rawEndX = timelineXForTime(win.endMs, maxTime, width, padding);
+    const endX   = Math.max(rawEndX, startX + MIN_SEGMENT_PX);
+    return { y, startX, endX };
   });
 
-  const toneClass = `timeline-${requestTokenTone(request)}`;
-  const markers = windows.map((window) => {
-    const cx = timelineXForTime(window.endMs, maxTime, width, padding);
-    const cy = timelineYForStage(window.stage, stageRows, padding);
-    return `
-      <circle class="timeline-marker ${toneClass} ${isPrimary ? "primary" : "secondary"}" cx="${cx}" cy="${cy}" r="${isPrimary ? 5.2 : 3.4}"></circle>
-    `;
-  }).join("");
+  // 단계 사이 전환을 cubic Bezier S-커브로 연결합니다.
+  // 직각 꺾임(L x oldY → L x newY) 대신:
+  //   C midX oldY, midX newY, newX newY
+  // 이렇게 하면 두 Y레벨 사이가 자연스러운 S자 곡선으로 이어집니다.
+  const points = [];
+  segments.forEach((seg, index) => {
+    if (index === 0) {
+      points.push(`M ${seg.startX} ${seg.y}`);
+    } else {
+      const prev = segments[index - 1];
+      const midX = (prev.endX + seg.startX) / 2;
+      // S-커브: 이전 단계 끝에서 현재 단계 시작까지
+      points.push(`C ${midX} ${prev.y}, ${midX} ${seg.y}, ${seg.startX} ${seg.y}`);
+    }
+    // 단계 내 수평 선분
+    points.push(`L ${seg.endX} ${seg.y}`);
+  });
 
-  const labelWindow = windows.at(-1);
-  const labelX = Math.min(width - padding.right - 6, timelineXForTime(labelWindow.endMs, maxTime, width, padding) + 10);
-  const labelY = timelineYForStage(labelWindow.stage, stageRows, padding) - (isPrimary ? 12 : 8);
+  // 각 단계 끝에 원형 마커 배치
+  const markers = segments.map((seg) => `
+    <circle
+      class="timeline-marker ${classStr}"
+      cx="${seg.endX}" cy="${seg.y}"
+      r="${isPrimary ? 5 : 3.2}"
+    ></circle>
+  `).join("");
+
+  const lastSeg = segments.at(-1);
+  const labelX  = Math.min(width - padding.right - 6, lastSeg.endX + 10);
+  const labelY  = lastSeg.y - (isPrimary ? 12 : 8);
 
   return `
-    <path class="timeline-path ${toneClass} ${isPrimary ? "primary" : "secondary"}" d="${points.join(" ")}"></path>
+    <path class="timeline-path ${classStr}" d="${points.join(" ")}"></path>
     ${markers}
-    <text class="timeline-request-label ${isPrimary ? "primary" : "secondary"}" x="${labelX}" y="${labelY}">#${request.sequence}</text>
+    <text
+      class="timeline-request-label ${isPrimary ? "primary" : "secondary"}"
+      x="${labelX}" y="${labelY}"
+    >#${request.sequence}</text>
   `;
 }
 

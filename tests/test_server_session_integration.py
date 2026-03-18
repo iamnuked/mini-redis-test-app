@@ -108,6 +108,35 @@ def test_session_integration_supports_hash_round_trip() -> None:
     assert get_response == b"$4\r\nmini\r\n"
 
 
+def test_session_integration_supports_hgetall_and_hdel_cleanup() -> None:
+    command_service = create_command_service()
+
+    run_session(
+        b"*4\r\n$4\r\nHSET\r\n$4\r\nuser\r\n$4\r\nname\r\n$4\r\nmini\r\n",
+        command_service,
+    )
+    run_session(
+        b"*3\r\n$6\r\nEXPIRE\r\n$4\r\nuser\r\n:10\r\n",
+        command_service,
+    )
+    get_all_response = run_session(
+        b"*2\r\n$7\r\nHGETALL\r\n$4\r\nuser\r\n",
+        command_service,
+    )
+    delete_response = run_session(
+        b"*3\r\n$4\r\nHDEL\r\n$4\r\nuser\r\n$4\r\nname\r\n",
+        command_service,
+    )
+    ttl_response = run_session(
+        b"*2\r\n$3\r\nTTL\r\n$4\r\nuser\r\n",
+        command_service,
+    )
+
+    assert get_all_response == b"%1\r\n$4\r\nname\r\n$4\r\nmini\r\n"
+    assert delete_response == b":1\r\n"
+    assert ttl_response == b":-2\r\n"
+
+
 def test_session_integration_returns_wrongtype_error() -> None:
     command_service = create_command_service()
     run_session(
@@ -141,6 +170,66 @@ def test_session_integration_supports_list_round_trip() -> None:
     assert range_response == b"*2\r\n$1\r\na\r\n$1\r\nb\r\n"
 
 
+def test_session_integration_supports_list_pop_and_cleanup() -> None:
+    command_service = create_command_service()
+
+    run_session(
+        b"*4\r\n$5\r\nLPUSH\r\n$5\r\nqueue\r\n$1\r\na\r\n$1\r\nb\r\n",
+        command_service,
+    )
+    run_session(
+        b"*3\r\n$6\r\nEXPIRE\r\n$5\r\nqueue\r\n:10\r\n",
+        command_service,
+    )
+    left_pop = run_session(
+        b"*2\r\n$4\r\nLPOP\r\n$5\r\nqueue\r\n",
+        command_service,
+    )
+    right_pop = run_session(
+        b"*2\r\n$4\r\nRPOP\r\n$5\r\nqueue\r\n",
+        command_service,
+    )
+    ttl_response = run_session(
+        b"*2\r\n$3\r\nTTL\r\n$5\r\nqueue\r\n",
+        command_service,
+    )
+
+    assert left_pop == b"$1\r\nb\r\n"
+    assert right_pop == b"$1\r\na\r\n"
+    assert ttl_response == b":-2\r\n"
+
+
+def test_session_integration_supports_set_round_trip_and_cleanup() -> None:
+    command_service = create_command_service()
+
+    add_response = run_session(
+        b"*4\r\n$4\r\nSADD\r\n$4\r\ntags\r\n$5\r\nredis\r\n$4\r\nmini\r\n",
+        command_service,
+    )
+    members_response = run_session(
+        b"*2\r\n$8\r\nSMEMBERS\r\n$4\r\ntags\r\n",
+        command_service,
+    )
+    is_member_response = run_session(
+        b"*3\r\n$9\r\nSISMEMBER\r\n$4\r\ntags\r\n$5\r\nredis\r\n",
+        command_service,
+    )
+    remove_response = run_session(
+        b"*4\r\n$4\r\nSREM\r\n$4\r\ntags\r\n$5\r\nredis\r\n$4\r\nmini\r\n",
+        command_service,
+    )
+    members_after_removal = run_session(
+        b"*2\r\n$8\r\nSMEMBERS\r\n$4\r\ntags\r\n",
+        command_service,
+    )
+
+    assert add_response == b":2\r\n"
+    assert members_response == b"*2\r\n$4\r\nmini\r\n$5\r\nredis\r\n"
+    assert is_member_response == b":1\r\n"
+    assert remove_response == b":2\r\n"
+    assert members_after_removal == b"*0\r\n"
+
+
 def test_session_integration_supports_zset_round_trip() -> None:
     command_service = create_command_service()
 
@@ -155,3 +244,28 @@ def test_session_integration_supports_zset_round_trip() -> None:
 
     assert add_response == b":2\r\n"
     assert range_response == b"*2\r\n$5\r\nalpha\r\n$4\r\nbeta\r\n"
+
+
+def test_session_integration_supports_zscore_and_zrem_cleanup() -> None:
+    command_service = create_command_service()
+
+    run_session(
+        b"*4\r\n$4\r\nZADD\r\n$4\r\nrank\r\n$3\r\n1.5\r\n$5\r\nalpha\r\n",
+        command_service,
+    )
+    score_response = run_session(
+        b"*3\r\n$6\r\nZSCORE\r\n$4\r\nrank\r\n$5\r\nalpha\r\n",
+        command_service,
+    )
+    remove_response = run_session(
+        b"*3\r\n$4\r\nZREM\r\n$4\r\nrank\r\n$5\r\nalpha\r\n",
+        command_service,
+    )
+    range_response = run_session(
+        b"*4\r\n$6\r\nZRANGE\r\n$4\r\nrank\r\n:0\r\n:-1\r\n",
+        command_service,
+    )
+
+    assert score_response == b"$3\r\n1.5\r\n"
+    assert remove_response == b":1\r\n"
+    assert range_response == b"*0\r\n"

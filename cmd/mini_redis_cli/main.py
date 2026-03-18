@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import shlex
 import socket
@@ -17,7 +19,8 @@ from internal.config.runtime_config import RuntimeConfig
 CRLF = b"\r\n"
 RespScalarValue: TypeAlias = str | int | None
 RespMapValue: TypeAlias = dict[str, RespScalarValue]
-RespObjectValue: TypeAlias = RespScalarValue | RespMapValue
+RespArrayValue: TypeAlias = list["RespObjectValue"]
+RespObjectValue: TypeAlias = RespScalarValue | RespMapValue | RespArrayValue
 
 
 class CliUsageError(Exception):
@@ -127,7 +130,7 @@ def materialize_response_value(response: RespObject) -> RespObjectValue:
         return response.value
     if response.kind == "null":
         return None
-    if response.kind == "map":
+    if response.kind in {"map", "array"}:
         return response.value
     return response.value
 
@@ -164,6 +167,14 @@ def read_response(stream: BinaryIO) -> RespObject:
             item = read_response(stream)
             value[str(materialize_response_value(key))] = materialize_response_value(item)
         return RespObject(kind="map", value=value)
+    if prefix == b"*":
+        item_count = int(read_line(stream).decode("ascii"))
+        if item_count < 0:
+            return RespObject(kind="null", value=None)
+        value: RespArrayValue = []
+        for _ in range(item_count):
+            value.append(materialize_response_value(read_response(stream)))
+        return RespObject(kind="array", value=value)
 
     raise ConnectionError(f"unsupported RESP type prefix: {prefix!r}")
 
@@ -184,6 +195,16 @@ def render_response(response: RespObject) -> str:
                 continue
             lines.append(f"{key}: {value}")
         return "\n".join(lines)
+    if response.kind == "array":
+        array_value = response.value
+        if not isinstance(array_value, list):
+            raise ValueError("array response must contain a list value")
+        if not array_value:
+            return "(empty)"
+        return "\n".join(
+            f"{index}) {( '(nil)' if value is None else value)}"
+            for index, value in enumerate(array_value, start=1)
+        )
     if response.kind == "error":
         return render_error(response)
     raise ValueError(f"unsupported response kind: {response.kind}")

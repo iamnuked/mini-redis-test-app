@@ -235,6 +235,14 @@ class CliMainTest(unittest.TestCase):
             {"server": "mini-redis", "version": "1.0", "proto": 3},
         )
 
+    def test_read_response_parses_array_payload(self) -> None:
+        stream = io.BytesIO(b"*2\r\n$1\r\na\r\n$1\r\nb\r\n")
+
+        response = self.cli_main.read_response(stream)
+
+        self.assertEqual(response.kind, "array")
+        self.assertEqual(response.value, ["a", "b"])
+
     def test_render_response_formats_map_payload(self) -> None:
         response = self.cli_main.RespObject(
             kind="map",
@@ -252,6 +260,26 @@ class CliMainTest(unittest.TestCase):
         response = self.cli_main.RespObject(kind="map", value="invalid")
 
         with self.assertRaisesRegex(ValueError, "dictionary"):
+            self.cli_main.render_response(response)
+
+    def test_render_response_formats_array_payload(self) -> None:
+        response = self.cli_main.RespObject(kind="array", value=["a", "b", None])
+
+        rendered = self.cli_main.render_response(response)
+
+        self.assertEqual(rendered, "1) a\n2) b\n3) (nil)")
+
+    def test_render_response_formats_empty_array_payload(self) -> None:
+        response = self.cli_main.RespObject(kind="array", value=[])
+
+        rendered = self.cli_main.render_response(response)
+
+        self.assertEqual(rendered, "(empty)")
+
+    def test_render_response_rejects_non_list_array_value(self) -> None:
+        response = self.cli_main.RespObject(kind="array", value="invalid")
+
+        with self.assertRaisesRegex(ValueError, "list"):
             self.cli_main.render_response(response)
 
     def test_repl_executes_multiple_commands_until_quit(self) -> None:
@@ -311,3 +339,24 @@ class CliMainTest(unittest.TestCase):
         self.assertEqual(exit_code, defaults.CLI_EXIT_SUCCESS)
         self.assertEqual(stdout.getvalue(), "mini-redis> mini-redis> ")
         self.assertIn("error:", stderr.getvalue())
+
+    def test_repl_renders_array_response(self) -> None:
+        stdin = io.StringIO("LRANGE queue 0 -1\nquit\n")
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        sockets = [
+            FakeSocket(HELLO_RESPONSE),
+            FakeSocket(b"*2\r\n$1\r\na\r\n$1\r\nb\r\n"),
+        ]
+        connection_factory = FakeConnectionFactory(sockets)
+
+        with mock.patch.object(
+            self.cli_main.socket,
+            "create_connection",
+            side_effect=connection_factory,
+        ):
+            exit_code = self.cli_main.main([], stdin=stdin, stdout=stdout, stderr=stderr)
+
+        self.assertEqual(exit_code, defaults.CLI_EXIT_SUCCESS)
+        self.assertEqual(stdout.getvalue(), "mini-redis> 1) a\n2) b\nmini-redis> ")
+        self.assertEqual(stderr.getvalue(), "")

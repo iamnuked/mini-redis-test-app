@@ -10,7 +10,7 @@
 
 - TCP 소켓 기반 서버와 CLI 클라이언트 간 통신
 - RESP3 세션 협상
-- 필수 명령 `HELLO`, `SET`, `GET`, `DEL`, `EXPIRE`, `TTL`
+- 지원 명령 `HELLO`, `SET`, `GET`, `DEL`, `EXPIRE`, `TTL`, `HSET`, `HGET`, `HDEL`, `HGETALL`, `LPUSH`, `RPUSH`, `LPOP`, `RPOP`, `LRANGE`, `SADD`, `SREM`, `SMEMBERS`, `SISMEMBER`, `ZADD`, `ZREM`, `ZRANGE`, `ZSCORE`
 - 오류 응답 규칙
 - 연결 및 세션 처리 규칙
 
@@ -43,6 +43,7 @@
 - 명령어와 인자는 Array 원소로 표현해야 한다.
 - 명령어와 문자열 인자는 RESP Blob String 또는 Simple String으로 해석할 수 있어야 한다.
 - `SET` 값은 RESP Blob String으로 표현되므로 공백과 개행을 포함할 수 있다.
+- 자료구조 명령의 멤버, 필드, 값 인자도 문자열로 표현하며 기본적으로 RESP Blob String을 사용한다.
 
 ### 3-5. 명령어 대소문자
 
@@ -129,6 +130,7 @@ mini-redis-cli --host 127.0.0.1 --port 6379 SET mykey "hello world"
 - Null: `_\r\n`
 - Simple Error: `-ERR <message>\r\n`
 - Map: `%<count>\r\n...`
+- Array: `*<count>\r\n...`
 
 ## 7. 명령별 RESP3 요청/응답 명세
 
@@ -185,6 +187,7 @@ mini-redis-cli --host 127.0.0.1 --port 6379 SET mykey "hello world"
 동작 규칙:
 
 - 키에 값을 저장한다.
+- 저장 결과 키의 자료형은 `string`이다.
 - 기존 값이 있으면 덮어쓴다.
 - 기존 TTL이 있으면 제거한다.
 
@@ -214,6 +217,7 @@ _
 
 ```text
 -ERR wrong number of arguments
+-WRONGTYPE Operation against a key holding the wrong kind of value
 ```
 
 ### 7-4. DEL
@@ -314,6 +318,123 @@ _
 -ERR wrong number of arguments
 ```
 
+### 7-7. Hash 명령군
+
+지원 명령:
+
+- `HSET key field value`
+- `HGET key field`
+- `HDEL key field`
+- `HGETALL key`
+
+요청 형식:
+
+- `HSET`: `*4\r\n$4\r\nHSET\r\n$<klen>\r\n<key>\r\n$<flen>\r\n<field>\r\n$<vlen>\r\n<value>\r\n`
+- `HGET`: `*3\r\n$4\r\nHGET\r\n$<klen>\r\n<key>\r\n$<flen>\r\n<field>\r\n`
+- `HDEL`: `*3\r\n$4\r\nHDEL\r\n$<klen>\r\n<key>\r\n$<flen>\r\n<field>\r\n`
+- `HGETALL`: `*2\r\n$7\r\nHGETALL\r\n$<klen>\r\n<key>\r\n`
+
+응답 규칙:
+
+- `HSET`: 새 필드 생성 시 `:1`, 기존 필드 덮어쓰기 시 `:0`
+- `HGET`: 값이 있으면 Blob String, 없으면 Null
+- `HDEL`: 삭제 성공 시 `:1`, 대상 없음 시 `:0`
+- `HGETALL`: 존재하면 field/value 쌍을 담은 RESP3 Map, 없으면 빈 Map
+
+동작 규칙:
+
+- 없는 키에 대한 `HSET`은 `hash` 타입 엔트리를 생성해야 한다.
+- `HGET`, `HDEL`, `HGETALL`은 없는 키를 빈 hash처럼 처리해야 한다.
+- 대상 키가 다른 자료형을 보유하면 타입 오류를 반환해야 한다.
+
+### 7-8. List 명령군
+
+지원 명령:
+
+- `LPUSH key value [value ...]`
+- `RPUSH key value [value ...]`
+- `LPOP key`
+- `RPOP key`
+- `LRANGE key start stop`
+
+요청 형식:
+
+- `LPUSH`/`RPUSH`: 첫 원소는 명령어, 둘째는 key, 셋째 이후는 하나 이상의 value를 담는 RESP Array
+- `LPOP`/`RPOP`: `*2` 배열
+- `LRANGE`: `*4` 배열, `start`와 `stop`은 RESP Number 또는 정수 문자열
+
+응답 규칙:
+
+- `LPUSH`/`RPUSH`: push 후 리스트 길이를 Number로 반환
+- `LPOP`/`RPOP`: 원소가 있으면 Blob String, 없으면 Null
+- `LRANGE`: 범위 결과를 RESP3 Array로 반환, 없으면 빈 Array
+
+동작 규칙:
+
+- 없는 키에 대한 `LPUSH`/`RPUSH`는 `list` 타입 엔트리를 생성해야 한다.
+- `LPOP`, `RPOP`, `LRANGE`는 없는 키를 빈 list처럼 처리해야 한다.
+- `LRANGE`는 음수 인덱스를 허용할 수 있으며, 구체 규칙은 Redis와 호환되게 구현해야 한다.
+- 대상 키가 다른 자료형을 보유하면 타입 오류를 반환해야 한다.
+
+### 7-9. Set 명령군
+
+지원 명령:
+
+- `SADD key member [member ...]`
+- `SREM key member [member ...]`
+- `SMEMBERS key`
+- `SISMEMBER key member`
+
+요청 형식:
+
+- `SADD`/`SREM`: 첫 원소는 명령어, 둘째는 key, 셋째 이후는 하나 이상의 member를 담는 RESP Array
+- `SMEMBERS`: `*2` 배열
+- `SISMEMBER`: `*3` 배열
+
+응답 규칙:
+
+- `SADD`: 실제로 추가된 멤버 수를 Number로 반환
+- `SREM`: 실제로 제거된 멤버 수를 Number로 반환
+- `SMEMBERS`: 멤버 목록을 RESP3 Array로 반환, 없으면 빈 Array
+- `SISMEMBER`: 존재하면 `:1`, 없으면 `:0`
+
+동작 규칙:
+
+- 없는 키에 대한 `SADD`는 `set` 타입 엔트리를 생성해야 한다.
+- `SREM`, `SMEMBERS`, `SISMEMBER`는 없는 키를 빈 set처럼 처리해야 한다.
+- `SMEMBERS`의 반환 순서는 정렬되지 않을 수 있으므로 테스트에서는 집합 동등성으로 검증해야 한다.
+- 대상 키가 다른 자료형을 보유하면 타입 오류를 반환해야 한다.
+
+### 7-10. Sorted Set 명령군
+
+지원 명령:
+
+- `ZADD key score member [score member ...]`
+- `ZREM key member [member ...]`
+- `ZRANGE key start stop`
+- `ZSCORE key member`
+
+요청 형식:
+
+- `ZADD`: 첫 원소는 명령어, 둘째는 key, 셋째 이후는 score/member 쌍
+- `ZREM`: 첫 원소는 명령어, 둘째는 key, 셋째 이후는 하나 이상의 member
+- `ZRANGE`: `*4` 배열, `start`와 `stop`은 RESP Number 또는 정수 문자열
+- `ZSCORE`: `*3` 배열
+
+응답 규칙:
+
+- `ZADD`: 새로 추가된 멤버 수를 Number로 반환
+- `ZREM`: 실제로 제거된 멤버 수를 Number로 반환
+- `ZRANGE`: 점수 오름차순 기준 멤버 목록을 RESP3 Array로 반환
+- `ZSCORE`: 점수가 있으면 Blob String 또는 Number 성격 응답, 없으면 Null
+
+동작 규칙:
+
+- 없는 키에 대한 `ZADD`는 `zset` 타입 엔트리를 생성해야 한다.
+- `ZREM`, `ZRANGE`, `ZSCORE`는 없는 키를 빈 zset처럼 처리해야 한다.
+- `ZADD`의 score는 부동소수점 문자열 또는 수치형 인자를 허용할 수 있으나, 구현과 테스트에서 동일한 파싱 정책을 사용해야 한다.
+- 대상 키가 다른 자료형을 보유하면 타입 오류를 반환해야 한다.
+
 ## 8. 공통 오류 응답 명세
 
 ### 8-1. 지원하지 않는 명령
@@ -338,6 +459,12 @@ _
 
 ```text
 -ERR internal error
+```
+
+### 8-4-1. 타입 불일치 오류
+
+```text
+-WRONGTYPE Operation against a key holding the wrong kind of value
 ```
 
 ### 8-5. 자원 제한 초과

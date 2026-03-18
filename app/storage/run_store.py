@@ -99,6 +99,7 @@ class RunStore:
             "running_cache",
             "running_reference",
             "aggregating",
+            "cancelling",
         }
         return any(run["status"] in active_statuses for run in self.list_runs())
 

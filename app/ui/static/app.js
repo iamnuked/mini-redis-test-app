@@ -6,7 +6,10 @@ const ACTIVE_RUN_STATUSES = new Set([
   "running_cache",
   "running_reference",
   "aggregating",
+  "cancelling",
 ]);
+
+const DEFAULT_BUCKETS = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
 
 const LANE_DEFINITIONS = [
   {
@@ -34,6 +37,7 @@ const state = {
   apiBaseCandidates: [],
   apiBaseResolved: false,
   bundleBase: "/",
+  scenarios: [],
   health: null,
   runs: [],
   currentRunId: null,
@@ -52,9 +56,14 @@ const state = {
     speed: 2,
     timer: null,
   },
+  uiAction: null,
 };
 
 const elements = {};
+const charts = {
+  latency: null,
+  bucket: null,
+};
 
 window.addEventListener("DOMContentLoaded", () => {
   cacheElements();
@@ -68,7 +77,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
 async function initializeDashboard() {
   await ensureReachableApiBase({ force: true });
-  await Promise.all([refreshHealth(), refreshRuns()]);
+  await Promise.all([loadScenarios(), refreshHealth(), refreshRuns()]);
   if (state.runs.length > 0) {
     await selectRun(state.runs[0].run_id);
   } else {
@@ -89,14 +98,21 @@ function cacheElements() {
   elements.apiBaseValue = document.getElementById("api-base-value");
   elements.apiBaseMeta = document.getElementById("api-base-meta");
   elements.runForm = document.getElementById("run-form");
+  elements.runButtonTop = document.getElementById("run-button-top");
   elements.replayButton = document.getElementById("replay-button");
+  elements.stopRunButton = document.getElementById("stop-run-button");
   elements.refreshAllButton = document.getElementById("refresh-all-button");
+  elements.seedDataButton = document.getElementById("seed-data-button");
+  elements.clearRedisButton = document.getElementById("clear-redis-button");
+  elements.resetUiButton = document.getElementById("reset-ui-button");
   elements.playbackStatus = document.getElementById("playback-status");
   elements.playbackSpeed = document.getElementById("playback-speed");
   elements.scenarioNote = document.getElementById("scenario-note");
   elements.summaryHeadline = document.getElementById("summary-headline");
   elements.summaryDetail = document.getElementById("summary-detail");
   elements.metaScenario = document.getElementById("meta-scenario");
+  elements.scenarioTagOne = document.getElementById("scenario-tag-one");
+  elements.scenarioTagTwo = document.getElementById("scenario-tag-two");
   elements.metaConfig = document.getElementById("meta-config");
   elements.metaReplaySource = document.getElementById("meta-replay-source");
   elements.flowMeta = document.getElementById("flow-meta");
@@ -108,6 +124,8 @@ function cacheElements() {
   elements.runsList = document.getElementById("runs-list");
   elements.logsList = document.getElementById("logs-list");
   elements.requestDetail = document.getElementById("request-detail");
+  elements.dbP95Node = document.getElementById("kpi-db-p95");
+  elements.redisAvgNode = document.getElementById("kpi-redis-avg");
   elements.kpiNodes = Array.from(document.querySelectorAll("[data-kpi]"));
 }
 
@@ -138,8 +156,16 @@ function hydrateRuntimeContext() {
 
 function bindEvents() {
   elements.runForm.addEventListener("submit", handleRunSubmit);
+  elements.runForm.scenario?.addEventListener("change", handleScenarioChange);
+  elements.runButtonTop?.addEventListener("click", () => {
+    elements.runForm.requestSubmit();
+  });
   elements.replayButton.addEventListener("click", toggleReplay);
+  elements.stopRunButton?.addEventListener("click", handleStopRun);
   elements.refreshAllButton.addEventListener("click", handleRefreshAll);
+  elements.seedDataButton?.addEventListener("click", handleSeedData);
+  elements.clearRedisButton?.addEventListener("click", handleClearRedis);
+  elements.resetUiButton?.addEventListener("click", handleResetUi);
   elements.playbackSpeed.addEventListener("change", (event) => {
     state.playback.speed = Number(event.target.value || "2");
     renderPlaybackStatus();
@@ -147,6 +173,58 @@ function bindEvents() {
       startReplay();
     }
   });
+  window.addEventListener("resize", resizeCharts);
+}
+
+async function loadScenarios() {
+  try {
+    const payload = await apiFetch("/api/scenarios");
+    state.scenarios = Array.isArray(payload.scenarios) ? payload.scenarios : [];
+    renderScenarioOptions();
+  } catch (error) {
+    state.scenarios = [];
+    setScenarioNote(`시나리오 목록을 불러오지 못했습니다. ${error.message}`);
+  }
+}
+
+function renderScenarioOptions() {
+  const select = elements.runForm?.elements?.scenario;
+  if (!select || state.scenarios.length === 0) {
+    return;
+  }
+
+  const currentValue = String(select.value || "detail_page");
+  select.innerHTML = state.scenarios
+    .map((scenario) => `<option value="${escapeHtml(scenario.scenario_id)}">${escapeHtml(scenario.title)}</option>`)
+    .join("");
+  const nextValue = state.scenarios.some((scenario) => scenario.scenario_id === currentValue)
+    ? currentValue
+    : state.scenarios[0].scenario_id;
+  select.value = nextValue;
+  applyScenarioDefaults(nextValue, { preserveUserValues: true });
+}
+
+function handleScenarioChange(event) {
+  applyScenarioDefaults(String(event.target.value || "detail_page"));
+  renderSummary();
+}
+
+function applyScenarioDefaults(scenarioId, options = {}) {
+  const scenario = state.scenarios.find((item) => item.scenario_id === scenarioId);
+  if (!scenario || !elements.runForm) {
+    return;
+  }
+
+  const preserveUserValues = options.preserveUserValues === true;
+  if (!preserveUserValues) {
+    elements.runForm.elements.iteration_count.value = String(scenario.default_iteration_count || 10);
+    elements.runForm.elements.concurrency.value = String(scenario.default_concurrency || 1);
+    elements.runForm.elements.ttl_seconds.value = String(scenario.default_ttl_seconds || 30);
+    elements.runForm.elements.hit_rate_step.value = String(deriveBucketStep(scenario.default_hit_rate_buckets || DEFAULT_BUCKETS));
+  }
+  elements.summaryHeadline.textContent = scenario.title;
+  elements.summaryDetail.textContent = scenario.subtitle || scenario.description || elements.summaryDetail.textContent;
+  renderScenarioTags(scenario);
 }
 
 async function handleRefreshAll() {
@@ -164,20 +242,115 @@ async function handleRefreshAll() {
   }
 }
 
+async function handleSeedData() {
+  try {
+    state.uiAction = "seed";
+    renderControls();
+    setScenarioNote("MongoDB baseline seed를 실행하는 중입니다.");
+    const payload = await apiFetch("/api/demo-actions/seed-data", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    setScenarioNote(
+      `${payload.collection} 컬렉션에 baseline seed를 반영했습니다. 새로 upsert된 문서는 ${payload.inserted}건입니다.`,
+    );
+  } catch (error) {
+    setScenarioNote(error.message);
+  } finally {
+    state.uiAction = null;
+    renderControls();
+  }
+}
+
+async function handleClearRedis() {
+  const formData = new FormData(elements.runForm);
+  const hitRateBuckets = buildBucketsFromFormValue(formData.get("hit_rate_step"));
+  if (hitRateBuckets.length === 0) {
+    setScenarioNote("적중률 간격은 1에서 100 사이 정수여야 합니다.");
+    return;
+  }
+  const payload = {
+    iteration_count: Number(formData.get("iteration_count") || 10),
+    hit_rate_buckets: hitRateBuckets,
+  };
+  try {
+    state.uiAction = "clear";
+    renderControls();
+    setScenarioNote("mini-redis benchmark key를 정리하는 중입니다.");
+    const response = await apiFetch("/api/demo-actions/clear-redis", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    setScenarioNote(`정리 후보 ${response.candidate_key_count}개 중 ${response.removed}개를 삭제했습니다.`);
+  } catch (error) {
+    setScenarioNote(error.message);
+  } finally {
+    state.uiAction = null;
+    renderControls();
+  }
+}
+
+async function handleStopRun() {
+  if (!state.currentRunId) {
+    setScenarioNote("중지할 활성 run이 없습니다.");
+    return;
+  }
+  try {
+    state.uiAction = "stop";
+    renderControls();
+    setScenarioNote(`${state.currentRunId} run에 취소 신호를 보내는 중입니다.`);
+    const payload = await apiFetch(`/api/benchmark-runs/${state.currentRunId}/stop`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    if (state.currentRun) {
+      state.currentRun.status = payload.status || "cancelling";
+    }
+    renderRunMeta();
+    renderHeroSpotlight();
+    renderSummary();
+    renderControls();
+    setScenarioNote(`${state.currentRunId} run이 취소 대기 상태로 전환되었습니다.`);
+  } catch (error) {
+    setScenarioNote(error.message);
+  } finally {
+    state.uiAction = null;
+    renderControls();
+  }
+}
+
+function handleResetUi() {
+  stopReplay({ preserveFrame: false });
+  state.currentRunId = null;
+  state.currentRun = null;
+  state.presentation = null;
+  state.events = [];
+  state.requests = [];
+  state.bucketSeries = [];
+  state.selectedRequestId = null;
+  state.uiAction = null;
+  renderAll();
+  setScenarioNote("화면 상태를 초기화했습니다. run 목록은 유지하고 선택된 보드만 비웠습니다.");
+}
+
 async function handleRunSubmit(event) {
   event.preventDefault();
   const formData = new FormData(elements.runForm);
+  const hitRateBuckets = buildBucketsFromFormValue(formData.get("hit_rate_step"));
   const payload = {
     scenario: String(formData.get("scenario") || "detail_page"),
     iteration_count: Number(formData.get("iteration_count") || 10),
     concurrency: Number(formData.get("concurrency") || 1),
     ttl_seconds: Number(formData.get("ttl_seconds") || 30),
-    hit_rate_buckets: parseBucketInput(String(formData.get("hit_rate_buckets") || "")),
+    hit_rate_buckets: hitRateBuckets,
     include_reference: formData.get("include_reference") === "on",
   };
 
   if (payload.hit_rate_buckets.length === 0) {
-    setScenarioNote("적중률 버킷에는 0에서 100 사이의 정수를 최소 하나 이상 넣어야 합니다.");
+    setScenarioNote("적중률 간격은 1에서 100 사이 정수여야 합니다.");
     return;
   }
 
@@ -346,15 +519,34 @@ function renderAll() {
   renderHeroSpotlight();
   renderSummary();
   renderKpis();
-  renderLaneSummary();
-  renderFlowTimeline();
-  renderFlowBoard();
+  renderControls();
   renderLatencyChart();
   renderBucketChart();
-  renderRuns();
   renderLogs();
-  renderRequestDetail();
   renderPlaybackStatus();
+}
+
+function renderControls() {
+  if (!elements.stopRunButton || !elements.runForm) {
+    return;
+  }
+  const isActive = Boolean(state.currentRun && ACTIVE_RUN_STATUSES.has(state.currentRun.status));
+  const action = state.uiAction;
+  const isBusy = action !== null;
+  elements.stopRunButton.disabled = !isActive || state.currentRun?.status === "cancelling" || isBusy;
+  elements.stopRunButton.textContent = state.currentRun?.status === "cancelling" ? "중지 요청됨" : action === "stop" ? "중지 중..." : "중지";
+  elements.seedDataButton.disabled = isBusy;
+  elements.clearRedisButton.disabled = isBusy;
+  elements.resetUiButton.disabled = isBusy;
+  elements.refreshAllButton.disabled = isBusy;
+  elements.runButtonTop.disabled = isBusy || isActive;
+  const runButton = document.getElementById("run-button");
+  if (runButton) {
+    runButton.disabled = isBusy || isActive;
+    runButton.textContent = isActive ? "실행 중" : "벤치마크 실행";
+  }
+  elements.seedDataButton.textContent = action === "seed" ? "적재 중..." : "데이터 적재";
+  elements.clearRedisButton.textContent = action === "clear" ? "정리 중..." : "Redis 비우기";
 }
 
 function renderConnectionCard() {
@@ -433,7 +625,7 @@ function renderHeroSpotlight() {
   elements.heroCacheAvg.textContent = hitAvgText || cacheAvgText;
 
   if (speedup > 1.05) {
-    elements.heroSpotlightTitle.textContent = `${hitRate} 적중률에서 캐시 경로가 우세합니다.`;
+    elements.heroSpotlightTitle.textContent = "캐시 경로가 현재 조건에서 우세합니다.";
     elements.heroSpotlightDetail.textContent =
       `DB Only ${dbAvgText}, Redis 적중 ${hitAvgText || "--"}, Redis 미스 ${missAvgText || "--"}로 측정됐습니다. ` +
       `성능 역전 기준 적중률은 ${breakEvenText}라서 발표에선 hit와 miss를 따로 보여주는 게 제일 잘 먹힙니다.`;
@@ -455,13 +647,18 @@ function renderHeroSpotlight() {
 }
 
 function renderSummary() {
+  const selectedScenario = state.scenarios.find((scenario) => scenario.scenario_id === elements.runForm?.elements?.scenario?.value);
   if (!state.currentRun) {
-    elements.summaryHeadline.textContent = "run을 선택하거나 새로 실행하면 보드가 채워집니다.";
+    elements.summaryHeadline.textContent = selectedScenario?.title || "run을 선택하거나 새로 실행하면 보드가 채워집니다.";
     elements.summaryDetail.textContent =
+      selectedScenario?.subtitle ||
       "데이터가 들어오면 현재 경로 분포, 성능 역전 기준 적중률, 캐시 경로가 실제로 이득을 주는지 여기서 바로 설명합니다.";
-    elements.metaScenario.textContent = humanizeScenario("detail_page");
-    elements.metaConfig.textContent = "10회 / 동시성 1 / ttl 30초";
+    elements.metaScenario.textContent = humanizeScenario(selectedScenario?.scenario_id || "detail_page");
+    elements.metaConfig.textContent = selectedScenario
+      ? `${selectedScenario.default_iteration_count}회 / 동시성 ${selectedScenario.default_concurrency} / ttl ${selectedScenario.default_ttl_seconds}초`
+      : "10회 / 동시성 1 / ttl 30초";
     elements.metaReplaySource.textContent = "events[] 순서";
+    renderScenarioTags(selectedScenario);
     return;
   }
 
@@ -498,6 +695,17 @@ function renderSummary() {
   elements.summaryDetail.textContent =
     `성능 역전 기준 적중률은 ${breakEven}입니다. Redis 적중 평균 ${hitAvg}, Redis 미스 평균 ${missAvg}, ` +
     `${cacheVolume}, 오류 ${summary.error_count}건 기준으로 presentation 읽기 모델이 KPI와 첫 비교 그래프를 채웁니다.`;
+  renderScenarioTags(selectedScenario || state.scenarios.find((scenario) => scenario.scenario_id === config.scenario));
+}
+
+function renderScenarioTags(scenario) {
+  const tags = Array.isArray(scenario?.tags) ? scenario.tags : ["검색 부하", "웜 캐시 비교"];
+  if (elements.scenarioTagOne) {
+    elements.scenarioTagOne.textContent = tags[0] || "검색 부하";
+  }
+  if (elements.scenarioTagTwo) {
+    elements.scenarioTagTwo.textContent = tags[1] || "웜 캐시 비교";
+  }
 }
 
 function renderKpis() {
@@ -505,6 +713,12 @@ function renderKpis() {
   for (const node of elements.kpiNodes) {
     const key = node.dataset.kpi;
     node.textContent = formatKpiValue(key, summary ? summary[key] : null);
+  }
+  if (elements.dbP95Node) {
+    elements.dbP95Node.textContent = summary ? formatMs(summary.p95_db_ms) : "--";
+  }
+  if (elements.redisAvgNode) {
+    elements.redisAvgNode.textContent = summary ? formatMs(summary.redis_avg_ms) : "--";
   }
 }
 
@@ -528,6 +742,9 @@ function renderLaneSummary() {
 }
 
 function renderRuns() {
+  if (!elements.runsList) {
+    return;
+  }
   if (state.runs.length === 0) {
     elements.runsList.innerHTML = emptyStateMarkup(
       "아직 run이 없습니다",
@@ -562,6 +779,9 @@ function renderRuns() {
 }
 
 function renderLogs() {
+  if (!elements.logsList) {
+    return;
+  }
   const logs = state.currentRun?.logs || [];
   if (logs.length === 0) {
     elements.logsList.innerHTML = emptyStateMarkup(
@@ -590,6 +810,9 @@ function renderLogs() {
 }
 
 function renderFlowBoard() {
+  if (!elements.flowBoard || !elements.flowMeta) {
+    return;
+  }
   const visibleRequests = getVisibleRequests();
   if (visibleRequests.length === 0) {
     elements.flowMeta.textContent = `이벤트 ${state.events.length}개`;
@@ -631,6 +854,9 @@ function renderFlowBoard() {
 }
 
 function renderFlowTimeline() {
+  if (!elements.flowTimeline) {
+    return;
+  }
   const visibleRequests = getVisibleRequests();
   if (visibleRequests.length === 0) {
     elements.flowTimeline.innerHTML = emptyChartMarkup(
@@ -698,102 +924,325 @@ function renderFlowTimeline() {
 }
 
 function renderLatencyChart() {
-  const latencySeries = state.presentation?.chart_series?.latency_comparison || buildFallbackLatencySeries();
-  if (latencySeries.length === 0) {
-    elements.latencyChart.innerHTML = emptyChartMarkup(
+  const maxSamplePoints = 10;
+  const cacheRequestPool = state.requests.filter((request) => request.mode === "cache_aside" && request.bucket != null);
+  const activeBucket = getActiveLatencyBucket(cacheRequestPool);
+  const dbRequests = sampleRequestsEvenly(
+    state.requests.filter((request) => request.mode === "db_only"),
+    maxSamplePoints,
+  );
+  const cacheRequests = sampleRequestsEvenly(
+    cacheRequestPool.filter((request) => request.bucket === activeBucket),
+    maxSamplePoints,
+  );
+  const referenceRequests = sampleRequestsEvenly(
+    state.requests.filter((request) => request.mode === "redis_only_reference"),
+    maxSamplePoints,
+  );
+  const maxPoints = Math.max(dbRequests.length, cacheRequests.length, referenceRequests.length);
+  if (maxPoints === 0 || !window.echarts) {
+    showEmptyChart("latency", elements.latencyChart,
       "요약 데이터를 기다리는 중입니다",
       "run 집계가 끝나면 presentation 읽기 모델이 지연시간 비교를 제공합니다.",
     );
     return;
   }
 
-  const series = latencySeries.map((item) => ({
-    label: item.label,
-    value: item.value,
-    className: latencySeriesTone(item.label),
-  }));
+  const categories = Array.from({ length: maxPoints }, (_, index) => `샘플 ${index + 1}`);
+  const dbOnly = alignLatencySeries(dbRequests.map((request) => request.totalDurationMs), maxPoints);
+  const cacheAside = alignLatencySeries(cacheRequests.map((request) => request.totalDurationMs), maxPoints);
+  const reference = alignLatencySeries(referenceRequests.map((request) => request.totalDurationMs), maxPoints);
 
-  const width = 360;
-  const height = 240;
-  const padding = { top: 18, right: 18, bottom: 44, left: 48 };
-  const maxValue = Math.max(...series.map((item) => item.value), 1);
-  const innerHeight = height - padding.top - padding.bottom;
-  const innerWidth = width - padding.left - padding.right;
-  const barWidth = innerWidth / series.length - 26;
+  const chart = ensureChart("latency", elements.latencyChart);
+  if (!chart) {
+    return;
+  }
 
-  const gridLines = [0.25, 0.5, 0.75, 1].map((ratio) => {
-    const y = padding.top + innerHeight - innerHeight * ratio;
-    const value = maxValue * ratio;
-    return `
-      <line class="chart-grid-line" x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}"></line>
-      <text class="chart-caption" x="${padding.left - 10}" y="${y + 4}" text-anchor="end">${formatMs(value)}</text>
-    `;
-  }).join("");
+  chart.setOption({
+    animationDuration: 500,
+    animationDurationUpdate: 350,
+    grid: {
+      left: 48,
+      right: 20,
+      top: 20,
+      bottom: 34,
+      containLabel: true,
+    },
+    tooltip: {
+      trigger: "axis",
+      backgroundColor: "rgba(18, 23, 33, 0.95)",
+      borderWidth: 0,
+      textStyle: {
+        color: "#f8f3ea",
+      },
+      formatter: (params) => {
+        const rows = Array.isArray(params) ? params.filter(Boolean) : [params].filter(Boolean);
+        if (rows.length === 0) {
+          return "";
+        }
+        const title = activeBucket == null
+          ? rows[0].axisValue
+          : `${rows[0].axisValue} · 현재 bucket ${activeBucket}%`;
+        const details = [title];
+        for (const row of rows) {
+          details.push(`${row.marker}${row.seriesName}: ${formatMs(row.data)}`);
+        }
+        return details.join("<br>");
+      },
+    },
+    legend: {
+      top: 0,
+      textStyle: {
+        color: "#5f6875",
+        fontSize: 12,
+      },
+    },
+    xAxis: {
+      type: "category",
+      boundaryGap: false,
+      data: categories,
+      axisLabel: {
+        color: "#7a8492",
+        formatter: (value) => value,
+      },
+      axisLine: {
+        lineStyle: {
+          color: "rgba(20, 32, 42, 0.18)",
+        },
+      },
+    },
+    yAxis: {
+      type: "value",
+      axisLabel: {
+        color: "#7a8492",
+        formatter: (value) => formatMs(value),
+      },
+      splitLine: {
+        lineStyle: {
+          color: "rgba(20, 32, 42, 0.08)",
+        },
+      },
+    },
+    series: [
+      buildLatencySeries("DB 전용", dbOnly, "#475569"),
+      buildLatencySeries("Redis + DB", cacheAside, "#0f8b8d"),
+      ...(reference.some((value) => value != null)
+        ? [buildLatencySeries("Redis 기준선", reference, "#2563eb", "dashed")]
+        : []),
+    ],
+  }, true);
+}
 
-  const bars = series.map((item, index) => {
-    const barHeight = innerHeight * (item.value / maxValue);
-    const x = padding.left + index * (barWidth + 26) + 18;
-    const y = padding.top + innerHeight - barHeight;
-    return `
-      <rect class="${item.className}" x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" rx="18"></rect>
-      <text class="chart-value" x="${x + barWidth / 2}" y="${y - 8}" text-anchor="middle">${formatMs(item.value)}</text>
-      <text class="chart-caption" x="${x + barWidth / 2}" y="${height - 14}" text-anchor="middle">${escapeHtml(localizeSeriesLabel(item.label))}</text>
-    `;
-  }).join("");
+function alignLatencySeries(values, maxPoints) {
+  const padding = Array.from({ length: Math.max(0, maxPoints - values.length) }, () => null);
+  return [...padding, ...values];
+}
 
-  elements.latencyChart.innerHTML = `
-    <svg class="chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="지연시간 비교 차트">
-      ${gridLines}
-      <line class="chart-axis" x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${height - padding.bottom}"></line>
-      <line class="chart-axis" x1="${padding.left}" y1="${height - padding.bottom}" x2="${width - padding.right}" y2="${height - padding.bottom}"></line>
-      ${bars}
-    </svg>
-  `;
+function getActiveLatencyBucket(cacheRequests) {
+  const lastRequest = Array.isArray(cacheRequests) ? cacheRequests.at(-1) : null;
+  if (lastRequest?.bucket != null) {
+    return lastRequest.bucket;
+  }
+  return null;
+}
+
+function sampleRequestsEvenly(requests, maxPoints) {
+  if (!Array.isArray(requests) || requests.length <= maxPoints) {
+    return Array.isArray(requests) ? requests : [];
+  }
+
+  const sampled = [];
+  const lastIndex = requests.length - 1;
+  for (let index = 0; index < maxPoints; index += 1) {
+    const requestIndex = Math.round((index * lastIndex) / (maxPoints - 1));
+    sampled.push(requests[requestIndex]);
+  }
+  return sampled;
 }
 
 function renderBucketChart() {
-  const pathSeries = state.presentation?.chart_series?.path_ratio || buildFallbackPathSeries();
-  const stageTotals = state.presentation?.chart_series?.timeline_stage_totals || buildFallbackStageTotals();
-  if (pathSeries.length === 0) {
-    elements.bucketChart.innerHTML = emptyChartMarkup(
+  if (state.bucketSeries.length === 0 || !window.echarts) {
+    showEmptyChart("bucket", elements.bucketChart,
       "경로 분포가 아직 없습니다",
       "요청 타임라인이 준비되면 presentation 읽기 모델이 요청 분포를 제공합니다.",
     );
     return;
   }
 
-  const maxValue = Math.max(...pathSeries.map((item) => item.value), 1);
-  elements.bucketChart.innerHTML = `
-    <div class="mix-chart" role="img" aria-label="요청 경로 분포 차트">
-      <div class="mix-chart-list">
-        ${pathSeries.map((item) => {
-          const widthPercent = (item.value / maxValue) * 100;
-          return `
-            <article class="mix-row">
-              <div class="mix-copy">
-                <strong>${escapeHtml(localizeSeriesLabel(item.label))}</strong>
-                <span>${escapeHtml(String(item.value))}건</span>
-              </div>
-              <div class="mix-track">
-                <div class="mix-fill ${pathSeriesTone(item.label)}" style="width: ${widthPercent}%"></div>
-              </div>
-            </article>
-          `;
-        }).join("")}
-      </div>
-      <div class="stage-chip-grid">
-        ${stageTotals.map((item) => `
-          <article class="stage-chip">
-            <span>${escapeHtml(localizeStageLabel(item.label))}</span>
-            <strong>${escapeHtml(formatMs(item.value))}</strong>
-          </article>
-        `).join("")}
-      </div>
-    </div>
-  `;
+  const summary = state.presentation?.kpis || state.currentRun?.summary || null;
+  const chart = ensureChart("bucket", elements.bucketChart);
+  if (!chart) {
+    return;
+  }
+
+  chart.setOption({
+    animationDuration: 500,
+    animationDurationUpdate: 350,
+    grid: {
+      left: 42,
+      right: 20,
+      top: 20,
+      bottom: 36,
+      containLabel: true,
+    },
+    tooltip: {
+      trigger: "axis",
+      backgroundColor: "rgba(18, 23, 33, 0.95)",
+      borderWidth: 0,
+      textStyle: {
+        color: "#f8f3ea",
+      },
+      formatter: (params) => {
+        const point = Array.isArray(params) ? params[0] : params;
+        if (!point) {
+          return "";
+        }
+        return `${point.axisValue}% 적중률<br>${formatMs(point.data)}`;
+      },
+    },
+    xAxis: {
+      type: "category",
+      data: state.bucketSeries.map((item) => `${item.bucket}`),
+      axisLabel: {
+        color: "#7a8492",
+        formatter: (value) => `${value}%`,
+      },
+      axisLine: {
+        lineStyle: {
+          color: "rgba(20, 32, 42, 0.18)",
+        },
+      },
+    },
+    yAxis: {
+      type: "value",
+      axisLabel: {
+        color: "#7a8492",
+        formatter: (value) => formatMs(value),
+      },
+      splitLine: {
+        lineStyle: {
+          color: "rgba(20, 32, 42, 0.08)",
+        },
+      },
+    },
+    series: [
+      {
+        type: "line",
+        name: "Redis + DB 평균",
+        smooth: true,
+        symbolSize: 10,
+        data: state.bucketSeries.map((item) => Number(item.avgMs.toFixed(2))),
+        lineStyle: {
+          width: 4,
+          color: "#0f8b8d",
+        },
+        itemStyle: {
+          color: "#0f8b8d",
+          borderColor: "#ffffff",
+          borderWidth: 2,
+        },
+        areaStyle: {
+          color: new window.echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: "rgba(15, 139, 141, 0.28)" },
+            { offset: 1, color: "rgba(15, 139, 141, 0.03)" },
+          ]),
+        },
+        markLine: summary && summary.break_even_hit_rate != null
+          ? {
+              symbol: "none",
+              label: {
+                formatter: "성능 역전 기준",
+                color: "#8a5a0a",
+                backgroundColor: "#f9e7b2",
+                padding: [4, 8],
+                borderRadius: 999,
+              },
+              lineStyle: {
+                color: "#d97706",
+                width: 2,
+                type: "dashed",
+              },
+              data: [{ xAxis: String(summary.break_even_hit_rate) }],
+            }
+          : undefined,
+      },
+      ...(summary && summary.db_avg_ms != null
+        ? [{
+            type: "line",
+            name: "DB 전용 평균",
+            data: state.bucketSeries.map(() => summary.db_avg_ms),
+            symbol: "none",
+            lineStyle: {
+              width: 3,
+              color: "#475569",
+              type: "dashed",
+            },
+            emphasis: {
+              disabled: true,
+            },
+          }]
+        : []),
+    ],
+  }, true);
+}
+
+function ensureChart(key, element) {
+  if (!window.echarts || !element) {
+    return null;
+  }
+  if (charts[key] && !charts[key].isDisposed()) {
+    return charts[key];
+  }
+  element.innerHTML = "";
+  charts[key] = window.echarts.init(element, null, { renderer: "canvas" });
+  return charts[key];
+}
+
+function disposeChart(key) {
+  if (charts[key] && !charts[key].isDisposed()) {
+    charts[key].dispose();
+  }
+  charts[key] = null;
+}
+
+function showEmptyChart(key, element, title, detail) {
+  disposeChart(key);
+  element.innerHTML = emptyChartMarkup(title, detail);
+}
+
+function resizeCharts() {
+  for (const chart of Object.values(charts)) {
+    if (chart && !chart.isDisposed()) {
+      chart.resize();
+    }
+  }
+}
+
+function buildLatencySeries(name, data, color, lineType = "solid") {
+  return {
+    type: "line",
+    name,
+    smooth: true,
+    connectNulls: true,
+    symbolSize: 8,
+    data,
+    lineStyle: {
+      width: 4,
+      type: lineType,
+      color,
+    },
+    itemStyle: {
+      color,
+      borderColor: "#ffffff",
+      borderWidth: 2,
+    },
+  };
 }
 
 function renderRequestDetail() {
+  if (!elements.requestDetail) {
+    return;
+  }
   const request = state.requests.find((item) => item.id === state.selectedRequestId) || null;
   if (!request) {
     elements.requestDetail.innerHTML = emptyStateMarkup(
@@ -1570,6 +2019,7 @@ function humanizeMode(mode) {
 function humanizeScenario(scenario) {
   return {
     detail_page: "상세 페이지",
+    search_autocomplete: "검색 자동완성",
   }[scenario] || scenario;
 }
 
@@ -1745,6 +2195,8 @@ function humanizeStatus(status) {
     running_baseline: "기준선 실행",
     running_cache: "캐시 실행",
     running_reference: "기준선 Redis 실행",
+    cancelling: "취소 중",
+    cancelled: "취소됨",
     aggregating: "집계 중",
     completed: "완료",
     failed: "실패",
@@ -1759,12 +2211,52 @@ function summarizeMetadata(metadata) {
   return entries.map(([key, value]) => `${key}=${value}`).join(" · ");
 }
 
-function parseBucketInput(rawValue) {
-  return Array.from(new Set(rawValue
-    .split(",")
-    .map((value) => Number(value.trim()))
-    .filter((value) => Number.isInteger(value) && value >= 0 && value <= 100)))
-    .sort((left, right) => left - right);
+function buildBucketsFromFormValue(rawValue) {
+  const step = Number(rawValue);
+  if (!Number.isInteger(step) || step <= 0 || step > 100) {
+    return [];
+  }
+  return buildBucketsFromStep(step);
+}
+
+function buildBucketsFromStep(step) {
+  const buckets = [];
+  for (let value = 0; value <= 100; value += step) {
+    buckets.push(value);
+  }
+  if (buckets.at(-1) !== 100) {
+    buckets.push(100);
+  }
+  return Array.from(new Set(buckets)).sort((left, right) => left - right);
+}
+
+function deriveBucketStep(buckets) {
+  const normalized = Array.isArray(buckets)
+    ? buckets
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value >= 0 && value <= 100)
+      .sort((left, right) => left - right)
+    : [];
+  if (normalized.length < 2) {
+    return DEFAULT_BUCKETS[1] || 10;
+  }
+
+  let step = normalized[1] - normalized[0];
+  if (!Number.isInteger(step) || step <= 0) {
+    return DEFAULT_BUCKETS[1] || 10;
+  }
+
+  for (let index = 1; index < normalized.length; index += 1) {
+    const previous = normalized[index - 1];
+    const current = normalized[index];
+    if (current === 100 && current - previous <= step) {
+      continue;
+    }
+    if (current - previous !== step) {
+      return DEFAULT_BUCKETS[1] || 10;
+    }
+  }
+  return step;
 }
 
 function firstNumericMetadata(events, key) {

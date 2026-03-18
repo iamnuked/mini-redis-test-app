@@ -12,10 +12,16 @@ from urllib.parse import parse_qs, urlparse
 
 from app.adapters.baseline import BaselineClient
 from app.adapters.mini_redis import MiniRedisClient, MiniRedisError
-from app.adapters.mongodb_baseline import MongoBaselineClient
+from app.adapters.mongodb_baseline import MongoBaselineClient, MongoBaselineError
 from app.api.config import ControllerSettings
-from app.api.contracts import serialize_events_response, serialize_presentation_response, serialize_requests_response, serialize_run_detail
+from app.api.contracts import (
+    serialize_events_response,
+    serialize_presentation_response,
+    serialize_requests_response,
+    serialize_run_detail,
+)
 from app.api.presentation import build_presentation_payload
+from app.api.scenarios import DEFAULT_HIT_RATE_BUCKETS, default_demo_config, get_scenario, list_scenarios
 from app.api.timeline import build_request_timelines
 from app.benchmark.models import RunConfig, RunRecord, utc_now_iso
 from app.benchmark.runner import BenchmarkRunner
@@ -30,12 +36,15 @@ class BenchmarkApplication:
         store: RunStore,
         runner: BenchmarkRunner,
         redis_client: MiniRedisClient,
+        baseline_client: BaselineClient,
     ) -> None:
         self.store = store
         self.runner = runner
         self.redis_client = redis_client
+        self.baseline_client = baseline_client
         self._run_lock = threading.Lock()
         self._active_run_id: str | None = None
+        self._cancel_events: dict[str, threading.Event] = {}
 
     def create_run(self, config: RunConfig) -> RunRecord | None:
         run_id = build_run_id()
@@ -51,18 +60,37 @@ class BenchmarkApplication:
             if self._active_run_id is not None or self.store.has_active_run():
                 return None
             self._active_run_id = run_id
+            self._cancel_events[run_id] = threading.Event()
             self.store.write_run(record)
             self.store.append_log(run_id, "INFO", "bootstrap", "benchmark queued")
             threading.Thread(target=self._run_and_release, args=(run_id,), daemon=True).start()
             return record
 
+    def stop_run(self, run_id: str) -> tuple[bool, str]:
+        with self._run_lock:
+            cancel_event = self._cancel_events.get(run_id)
+            if self._active_run_id != run_id or cancel_event is None:
+                return False, "run is not active"
+            if cancel_event.is_set():
+                return False, "run is already cancelling"
+            cancel_event.set()
+
+        record = self.store.read_run(run_id)
+        if record.status not in {"cancelled", "completed", "failed"}:
+            record.status = "cancelling"
+            record.updated_at = utc_now_iso()
+            self.store.write_run(record)
+            self.store.append_log(run_id, "INFO", "cancel", "benchmark cancellation requested")
+        return True, "cancellation requested"
+
     def _run_and_release(self, run_id: str) -> None:
         try:
-            self.runner.run(run_id)
+            self.runner.run(run_id, cancel_event=self._cancel_events.get(run_id))
         finally:
             with self._run_lock:
                 if self._active_run_id == run_id:
                     self._active_run_id = None
+                self._cancel_events.pop(run_id, None)
 
 
 class BenchmarkHTTPServer(ThreadingHTTPServer):
@@ -90,6 +118,26 @@ class BenchmarkRequestHandler(BaseHTTPRequestHandler):
 
         if parsed.path == "/api/benchmark-runs":
             self._handle_run_list()
+            return
+
+        if parsed.path == "/api/scenarios":
+            self._write_json({"scenarios": list_scenarios()})
+            return
+
+        if parsed.path.startswith("/api/scenarios/"):
+            parts = parsed.path.strip("/").split("/")
+            if len(parts) < 3:
+                self._write_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+                return
+            scenario = get_scenario(parts[2])
+            if scenario is None:
+                self._write_json({"error": "scenario not found"}, HTTPStatus.NOT_FOUND)
+                return
+            self._write_json(scenario)
+            return
+
+        if parsed.path == "/api/demo-config":
+            self._write_json(default_demo_config())
             return
 
         if parsed.path.startswith("/api/benchmark-runs/") and parsed.path.endswith("/events"):
@@ -137,6 +185,23 @@ class BenchmarkRequestHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/benchmark-runs":
             self._handle_create_run()
+            return
+
+        if parsed.path.startswith("/api/benchmark-runs/") and parsed.path.endswith("/stop"):
+            parts = parsed.path.strip("/").split("/")
+            if len(parts) < 4:
+                self._write_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
+                return
+            run_id = parts[2]
+            self._handle_stop_run(run_id)
+            return
+
+        if parsed.path == "/api/demo-actions/seed-data":
+            self._handle_seed_data()
+            return
+
+        if parsed.path == "/api/demo-actions/clear-redis":
+            self._handle_clear_redis()
             return
 
         self._write_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
@@ -213,6 +278,85 @@ class BenchmarkRequestHandler(BaseHTTPRequestHandler):
             return
         payload = serialize_run_detail(record, self.app.store.read_logs(run_id))
         self._write_json(payload)
+
+    def _handle_stop_run(self, run_id: str) -> None:
+        try:
+            self.app.store.read_run(run_id)
+        except FileNotFoundError:
+            self._write_json({"error": "run not found"}, HTTPStatus.NOT_FOUND)
+            return
+
+        stopped, message = self.app.stop_run(run_id)
+        if not stopped:
+            self._write_json({"error": message}, HTTPStatus.CONFLICT)
+            return
+        self._write_json({"run_id": run_id, "status": "cancelling", "message": message})
+
+    def _handle_seed_data(self) -> None:
+        baseline_client = self.app.baseline_client
+        seed_method = getattr(baseline_client, "seed", None)
+        if not callable(seed_method):
+            self._write_json(
+                {"error": "seed-data is only available when using the mongodb baseline backend"},
+                HTTPStatus.BAD_REQUEST,
+            )
+            return
+
+        try:
+            inserted = int(seed_method())
+        except (MongoBaselineError, RuntimeError, ValueError) as exc:
+            self._write_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+
+        collection_name = getattr(baseline_client, "collection_name", "unknown")
+        self._write_json(
+            {
+                "status": "ok",
+                "action": "seed-data",
+                "inserted": inserted,
+                "collection": collection_name,
+            }
+        )
+
+    def _handle_clear_redis(self) -> None:
+        try:
+            body = self._read_json_body()
+        except ValueError as exc:
+            self._write_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+
+        iteration_count = max(1, int(body.get("iteration_count", 10)))
+        raw_buckets = body.get("hit_rate_buckets", DEFAULT_HIT_RATE_BUCKETS)
+        if not isinstance(raw_buckets, list):
+            self._write_json({"error": "hit_rate_buckets must be a JSON array"}, HTTPStatus.BAD_REQUEST)
+            return
+        try:
+            hit_rate_buckets = [int(value) for value in raw_buckets]
+        except (TypeError, ValueError):
+            self._write_json({"error": "hit_rate_buckets must contain integers"}, HTTPStatus.BAD_REQUEST)
+            return
+
+        candidate_keys = _collect_benchmark_keys(self.app.store, iteration_count, hit_rate_buckets)
+        removed = 0
+        errors: list[str] = []
+        for key in candidate_keys:
+            try:
+                removed += int(self.app.redis_client.delete(key))
+            except MiniRedisError as exc:
+                errors.append(str(exc))
+                break
+
+        status = HTTPStatus.OK if not errors else HTTPStatus.BAD_GATEWAY
+        self._write_json(
+            {
+                "status": "ok" if not errors else "partial",
+                "action": "clear-redis",
+                "candidate_key_count": len(candidate_keys),
+                "removed": removed,
+                "error": errors[0] if errors else None,
+            },
+            status,
+        )
 
     def _handle_events(self, run_id: str, query: dict[str, list[str]]) -> None:
         after_values = query.get("after", [])
@@ -315,7 +459,7 @@ def build_application(
         timeout_seconds=settings.redis_timeout_seconds,
     )
     runner = runner or BenchmarkRunner(store, baseline_client, redis_client)
-    return BenchmarkApplication(store=store, runner=runner, redis_client=redis_client)
+    return BenchmarkApplication(store=store, runner=runner, redis_client=redis_client, baseline_client=baseline_client)
 
 
 def create_server(
@@ -351,7 +495,7 @@ def _build_run_config(body: dict[str, Any]) -> RunConfig:
     scenario = body.get("scenario", "detail_page")
     iteration_count = int(body.get("iteration_count", 10))
     concurrency = int(body.get("concurrency", 1))
-    hit_rate_buckets = [int(value) for value in body.get("hit_rate_buckets", [0, 50, 100])]
+    hit_rate_buckets = [int(value) for value in body.get("hit_rate_buckets", DEFAULT_HIT_RATE_BUCKETS)]
     ttl_seconds = int(body.get("ttl_seconds", 30))
     include_reference = bool(body.get("include_reference", False))
 
@@ -386,6 +530,31 @@ def _build_baseline_client(settings: ControllerSettings) -> BaselineClient | Mon
             connect_timeout_ms=settings.mongodb_connect_timeout_ms,
         )
     return BaselineClient()
+
+def _collect_benchmark_keys(store: RunStore, iteration_count: int, hit_rate_buckets: list[int]) -> list[str]:
+    keys: set[str] = set()
+    capped_iteration_count = min(max(iteration_count, 1), 5000)
+    buckets = {bucket for bucket in hit_rate_buckets if 0 <= bucket <= 100}
+    if not buckets:
+        buckets = {0, 50, 100}
+
+    for bucket in buckets:
+        for index in range(capped_iteration_count):
+            keys.add(f"benchmark:detail:{bucket}-{index}")
+    for index in range(capped_iteration_count):
+        keys.add(f"benchmark:detail:reference-{index}")
+
+    for run in store.list_runs()[:20]:
+        run_id = run.get("run_id")
+        if not isinstance(run_id, str):
+            continue
+        for event in store.read_events(run_id):
+            metadata = event.get("metadata", {})
+            record_id = metadata.get("record_id")
+            if isinstance(record_id, str):
+                keys.add(f"benchmark:detail:{record_id}")
+
+    return sorted(keys)
 
 
 if __name__ == "__main__":

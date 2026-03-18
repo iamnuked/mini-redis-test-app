@@ -1,0 +1,48 @@
+@import "tailwindcss" source(".");
+
+@plugin "daisyui" {
+  themes: benchmark --default, night;
+}
+
+@plugin "daisyui/theme" {
+  name: "benchmark";
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+
+  --color-base-100: oklch(98% 0.01 85);
+  --color-base-200: oklch(95% 0.02 85);
+  --color-base-300: oklch(91% 0.03 85);
+  --color-base-content: oklch(22% 0.03 240);
+  --color-primary: oklch(57% 0.16 218);
+  --color-primary-content: oklch(98% 0.01 218);
+  --color-secondary: oklch(74% 0.17 66);
+  --color-secondary-content: oklch(24% 0.04 60);
+  --color-accent: oklch(63% 0.15 180);
+  --color-accent-content: oklch(98% 0.01 180);
+  --color-neutral: oklch(23% 0.02 240);
+  --color-neutral-content: oklch(96% 0.01 240);
+  --color-info: oklch(66% 0.13 225);
+  --color-success: oklch(68% 0.15 160);
+  --color-warning: oklch(78% 0.17 80);
+  --color-error: oklch(63% 0.19 25);
+  --radius-box: 1.5rem;
+  --radius-field: 1rem;
+  --radius-selector: 1rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
+}
+
+@layer base {
+  html {
+    background:
+      radial-gradient(circle at top left, rgba(255, 197, 96, 0.18), transparent 28%),
+      radial-gradient(circle at top right, rgba(38, 94, 198, 0.14), transparent 22%),
+      linear-gradient(180deg, #faf6ef 0%, #f3efe7 48%, #f6f2ea 100%);
+  }
+
+  body {
+    min-height: 100vh;
+  }
+}

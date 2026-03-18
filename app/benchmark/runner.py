@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import statistics
+import threading
 import time
 from pathlib import Path
 
@@ -10,13 +11,17 @@ from app.benchmark.models import FlowEvent, RunConfig, RunRecord, RunSummary, ut
 from app.storage.run_store import RunStore
 
 
+class BenchmarkCancelled(Exception):
+    pass
+
+
 class BenchmarkRunner:
     def __init__(self, store: RunStore, baseline_client: BaselineClient, redis_client: MiniRedisClient) -> None:
         self._store = store
         self._baseline_client = baseline_client
         self._redis_client = redis_client
 
-    def run(self, run_id: str) -> None:
+    def run(self, run_id: str, cancel_event: threading.Event | None = None) -> None:
         record = self._store.read_run(run_id)
         config = record.config
         record.status = "bootstrapping"
@@ -32,12 +37,14 @@ class BenchmarkRunner:
         )
 
         try:
+            self._ensure_not_cancelled(cancel_event)
             if not self._redis_client.health_check():
                 raise MiniRedisError("mini-redis health check failed")
             self._store.append_log(run_id, "INFO", "bootstrap", "mini-redis health check passed")
 
             baseline_health_check = getattr(self._baseline_client, "health_check", None)
             if callable(baseline_health_check):
+                self._ensure_not_cancelled(cancel_event)
                 if not baseline_health_check():
                     raise RuntimeError("baseline database health check failed")
                 self._store.append_log(run_id, "INFO", "bootstrap", "baseline database health check passed")
@@ -53,7 +60,7 @@ class BenchmarkRunner:
                 "warmup started",
                 {"warmup_count": warmup_count},
             )
-            self._warmup(config)
+            self._warmup(config, cancel_event)
             self._store.append_log(
                 run_id,
                 "INFO",
@@ -72,7 +79,7 @@ class BenchmarkRunner:
                 "baseline benchmark started",
                 {"iteration_count": config.iteration_count},
             )
-            baseline_samples = self._run_baseline(run_id, config)
+            baseline_samples = self._run_baseline(run_id, config, cancel_event)
 
             record.status = "running_cache"
             record.updated_at = utc_now_iso()
@@ -95,7 +102,7 @@ class BenchmarkRunner:
                 fallback_count,
                 error_count,
                 bucket_averages,
-            ) = self._run_cache(run_id, config)
+            ) = self._run_cache(run_id, config, cancel_event)
 
             reference_samples: list[float] = []
             if config.include_reference:
@@ -109,12 +116,13 @@ class BenchmarkRunner:
                     "reference benchmark started",
                     {"iteration_count": config.iteration_count},
                 )
-                reference_samples = self._run_reference(run_id, config)
+                reference_samples = self._run_reference(run_id, config, cancel_event)
 
             record.status = "aggregating"
             record.updated_at = utc_now_iso()
             self._store.write_run(record)
             self._store.append_log(run_id, "INFO", "aggregation", "aggregation started")
+            self._ensure_not_cancelled(cancel_event)
             summary = build_summary(
                 baseline_samples=baseline_samples,
                 cache_samples=cache_samples,
@@ -150,6 +158,13 @@ class BenchmarkRunner:
                 },
             )
             self._store.append_log(run_id, "INFO", "complete", "benchmark run completed")
+        except BenchmarkCancelled:
+            record.status = "cancelled"
+            record.updated_at = utc_now_iso()
+            record.finished_at = utc_now_iso()
+            record.error_message = None
+            self._store.write_run(record)
+            self._store.append_log(run_id, "INFO", "cancelled", "benchmark run cancelled")
         except Exception as exc:
             record.status = "failed"
             record.updated_at = utc_now_iso()
@@ -158,13 +173,15 @@ class BenchmarkRunner:
             self._store.write_run(record)
             self._store.append_log(run_id, "ERROR", "failed", str(exc))
 
-    def _warmup(self, config: RunConfig) -> None:
+    def _warmup(self, config: RunConfig, cancel_event: threading.Event | None = None) -> None:
         for index in range(min(3, config.iteration_count)):
+            self._ensure_not_cancelled(cancel_event)
             self._baseline_client.fetch_detail(str(index))
 
-    def _run_baseline(self, run_id: str, config: RunConfig) -> list[float]:
+    def _run_baseline(self, run_id: str, config: RunConfig, cancel_event: threading.Event | None = None) -> list[float]:
         samples: list[float] = []
         for index in range(config.iteration_count):
+            self._ensure_not_cancelled(cancel_event)
             request_id = f"baseline-{index}"
             started = time.perf_counter()
             start_ms = elapsed_ms(started, started)
@@ -225,7 +242,12 @@ class BenchmarkRunner:
         )
         return samples
 
-    def _run_cache(self, run_id: str, config: RunConfig) -> tuple[list[float], int, int, int, int, int, dict[int, float]]:
+    def _run_cache(
+        self,
+        run_id: str,
+        config: RunConfig,
+        cancel_event: threading.Event | None = None,
+    ) -> tuple[list[float], int, int, int, int, int, dict[int, float]]:
         samples: list[float] = []
         cache_hits = 0
         cache_total = 0
@@ -238,6 +260,7 @@ class BenchmarkRunner:
         for bucket in buckets:
             target_hit_count = max(0, min(config.iteration_count, round(config.iteration_count * bucket / 100)))
             for index in range(config.iteration_count):
+                self._ensure_not_cancelled(cancel_event)
                 cache_total += 1
                 record_id = f"{bucket}-{index}"
                 key = f"benchmark:detail:{record_id}"
@@ -490,9 +513,10 @@ class BenchmarkRunner:
         }
         return samples, cache_hits, cache_total, redis_miss_count, fallback_count, error_count, bucket_averages
 
-    def _run_reference(self, run_id: str, config: RunConfig) -> list[float]:
+    def _run_reference(self, run_id: str, config: RunConfig, cancel_event: threading.Event | None = None) -> list[float]:
         samples: list[float] = []
         for index in range(config.iteration_count):
+            self._ensure_not_cancelled(cancel_event)
             record_id = f"reference-{index}"
             key = f"benchmark:detail:{record_id}"
             request_id = f"reference-{index}"
@@ -543,6 +567,10 @@ class BenchmarkRunner:
             {"sample_count": len(samples)},
         )
         return samples
+
+    def _ensure_not_cancelled(self, cancel_event: threading.Event | None) -> None:
+        if cancel_event is not None and cancel_event.is_set():
+            raise BenchmarkCancelled()
 
 
 def build_summary(

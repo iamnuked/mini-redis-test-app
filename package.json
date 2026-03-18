@@ -1,0 +1,13 @@
+{
+  "scripts": {
+    "build:css": "npx @tailwindcss/cli -i ./app/ui/static/tailwind.css -o ./app/ui/static/build.css --minify",
+    "dev:css": "npx @tailwindcss/cli -i ./app/ui/static/tailwind.css -o ./app/ui/static/build.css --watch",
+    "build:ui": "npm run build:css"
+  },
+  "dependencies": {
+    "@tailwindcss/cli": "^4.2.2",
+    "daisyui": "^5.5.19",
+    "echarts": "^6.0.0",
+    "tailwindcss": "^4.2.2"
+  }
+}

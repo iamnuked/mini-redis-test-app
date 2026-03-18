@@ -70,6 +70,10 @@ class MongoBaselineClient:
         self._seeded = True
         return upserted_count
 
+    @property
+    def collection_name(self) -> str:
+        return self._collection_name
+
     def _get_collection(self) -> Any:
         if self._collection is not None:
             return self._collection

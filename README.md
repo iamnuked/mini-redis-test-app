@@ -49,7 +49,8 @@ python -m pip install -r requirements.txt
 ### 2. 서버 실행
 
 ```powershell
-python -m cmd.mini_redis_server.main
+$env:PYTHONPATH = (Get-Location).Path
+python .\cmd\mini_redis_server\main.py
 ```
 
 기본 서버 주소/포트는 문서에 정의된 런타임 설정을 따릅니다.
@@ -57,21 +58,17 @@ python -m cmd.mini_redis_server.main
 ### 3. CLI 단일 명령 실행
 
 ```powershell
-python -m cmd.mini_redis_cli.main GET mykey
-python -m cmd.mini_redis_cli.main SET mykey hello
-python -m cmd.mini_redis_cli.main TTL mykey
-```
-
-호스트와 포트를 직접 지정할 수도 있습니다.
-
-```powershell
-python -m cmd.mini_redis_cli.main --host 127.0.0.1 --port 6379 GET mykey
+$env:PYTHONPATH = (Get-Location).Path
+python .\cmd\mini_redis_cli\main.py GET mykey
+python .\cmd\mini_redis_cli\main.py HSET user name mini
+python .\cmd\mini_redis_cli\main.py LRANGE queue 0 -1
 ```
 
 ### 4. CLI REPL 실행
 
 ```powershell
-python -m cmd.mini_redis_cli.main
+$env:PYTHONPATH = (Get-Location).Path
+python .\cmd\mini_redis_cli\main.py
 ```
 
 실행 후 예시:
@@ -92,7 +89,7 @@ REPL에서는 다음 동작을 지원합니다.
 - `exit`, `quit` 입력 시 종료
 - 개별 명령 오류가 발생해도 다음 명령 계속 입력 가능
 
-현재 서버는 연결당 요청 1개를 처리하므로, REPL은 사용자에게는 연속 입력처럼 보이지만 내부적으로는 명령마다 새 연결을 사용합니다.
+현재 서버는 하나의 연결에서 여러 요청을 연속 처리할 수 있습니다. 현재 CLI REPL은 명령마다 새 연결을 사용하지만, 서버 자체는 지속 연결 세션을 지원합니다.
 
 ## 테스트 실행
 
@@ -164,11 +161,12 @@ tests/
 CLI 단일 명령 실행 예시:
 
 ```powershell
-python -m cmd.mini_redis_cli.main SET mykey hello
-python -m cmd.mini_redis_cli.main GET mykey
-python -m cmd.mini_redis_cli.main EXPIRE mykey 10
-python -m cmd.mini_redis_cli.main TTL mykey
-python -m cmd.mini_redis_cli.main DEL mykey
+$env:PYTHONPATH = (Get-Location).Path
+python .\cmd\mini_redis_cli\main.py SET mykey hello
+python .\cmd\mini_redis_cli\main.py HSET user name mini
+python .\cmd\mini_redis_cli\main.py SMEMBERS tags
+python .\cmd\mini_redis_cli\main.py ZRANGE ranking 0 -1
+python .\cmd\mini_redis_cli\main.py TTL mykey
 ```
 
 REPL 내부 입력 예시:

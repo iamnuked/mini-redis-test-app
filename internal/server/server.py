@@ -2,6 +2,10 @@ import socket
 
 from internal.config.runtime_config import RuntimeConfig
 from internal.observability.logger import Logger
+from internal.protocol.resp.request_decoder import RespRequestDecoder
+from internal.protocol.resp.response_encoder import RespResponseEncoder
+from internal.server.session_handler import SessionHandler
+from internal.service.command_service import CommandService
 
 
 class MiniRedisServer:
@@ -26,5 +30,14 @@ class MiniRedisServer:
                         self._logger.info(
                             f"accepted connection from {client_address[0]}:{client_address[1]}"
                         )
+                        handler = SessionHandler(
+                            client_socket=client_socket,
+                            request_decoder=RespRequestDecoder(),
+                            command_service=CommandService(),
+                            response_encoder=RespResponseEncoder(),
+                            logger=self._logger,
+                            read_size=self._config.max_request_size_bytes,
+                        )
+                        handler.handle()
             except KeyboardInterrupt:
                 self._logger.info("mini-redis server stopped")

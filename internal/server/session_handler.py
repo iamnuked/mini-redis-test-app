@@ -1,6 +1,7 @@
 import socket
 
 from internal.observability.logger import Logger
+from internal.observability.metrics import Metrics
 from internal.protocol.resp.request_decoder import RespRequestDecoder
 from internal.protocol.resp.response_encoder import RespResponseEncoder
 from internal.service.command_service import CommandService
@@ -13,6 +14,7 @@ class SessionHandler:
         request_decoder: RespRequestDecoder,
         command_service: CommandService,
         response_encoder: RespResponseEncoder,
+        metrics: Metrics,
         logger: Logger | None = None,
         read_size: int = 4096,
     ) -> None:
@@ -20,6 +22,7 @@ class SessionHandler:
         self._request_decoder = request_decoder
         self._command_service = command_service
         self._response_encoder = response_encoder
+        self._metrics = metrics
         self._logger = logger or Logger()
         self._read_size = read_size
 
@@ -29,9 +32,11 @@ class SessionHandler:
             if not request_bytes:
                 return
 
+            self._metrics.increment_requests()
             response = self._process_request(request_bytes)
             self._write_response(response)
         except Exception as error:
+            self._metrics.increment_errors()
             self._logger.error(f"session handling failed: {error}")
 
     def _read_request(self) -> bytes:

@@ -204,17 +204,16 @@ Gateway 응답은 lane A/B 결과를 묶어서 내려준다.
 
 속도 비교는 시나리오별로 분리해서 봐야 한다.
 
-- `Cold GET`
-- `Warm GET`
-- `SET`
-- `DEL`
-- `TTL Expiry GET`
+- `Read`
+- `Write`
+- `Mixed`
+- `TTL churn`
 
 해석 기준:
 
-- `Warm GET`은 Redis 이점이 가장 잘 드러나는 구간이다.
-- `SET`은 lane A가 lane B보다 느릴 수 있다.
-- `Cold GET`은 cache miss + backfill 비용 때문에 lane A가 반드시 빠르지 않다.
+- `Read`는 hot-cold 분포와 memory profile에 따라 Redis 이점이 가장 잘 드러나는 구간이다.
+- `Write`는 lane A가 lane B보다 느릴 수 있다.
+- `Mixed`는 실제 앱과 가까운 절충 workload다.
 
 ## 9. 대시보드 구성
 

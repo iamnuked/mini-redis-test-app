@@ -366,6 +366,16 @@ class CommandService:
                 break
             self._delete_entry_and_ttl(key)
             self._evicted_keys += 1
+        if self._current_memory_bytes() <= self._max_memory_bytes:
+            return
+        for key in protected_keys:
+            if self._current_memory_bytes() <= self._max_memory_bytes:
+                break
+            if self._store_repository.get(key) is None:
+                self._forget_key(key)
+                continue
+            self._delete_entry_and_ttl(key)
+            self._evicted_keys += 1
 
     def _execute_hset(self, key: str, field: str, value: str) -> int:
         entry = self._get_typed_entry(key, ValueType.HASH)

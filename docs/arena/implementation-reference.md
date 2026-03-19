@@ -292,8 +292,12 @@ Reset 시 수행되는 일:
 
 현재 제공 시나리오:
 
-- `Run`
-  - 현재는 내부적으로 `Hot Key` plan 실행
+- `Read`
+  - `0 / 20 / 40 / 60 / 80 / 100` 단계의 hot-cold 분포를 지원한다.
+- `Write`
+  - 같은 namespace에 쓰기 중심 작업을 반복한다.
+- `Mixed`
+  - 읽기/쓰기/삭제를 섞어 lane 차이를 본다.
 
 입력값:
 
@@ -386,10 +390,9 @@ Reset 시 수행되는 일:
 - `internal/arena/events/bus.py`
 - `internal/arena/events/history.py`
 - `internal/arena/scenario/models.py`
-- `internal/arena/scenario/hot_key.py`
-- `internal/arena/scenario/ttl_expiry.py`
 - `internal/arena/scenario/reset.py`
 - `internal/arena/scenario/runner.py`
+- `internal/arena/scenario/workloads.py`
 
 ### 7-7. 프론트엔드
 
@@ -501,9 +504,9 @@ node --check web/arena_dashboard/app.js
 
 strict benchmark 수준의 결과를 원하면 lane별 자원 분리나 컨테이너/호스트 분리가 추가로 필요하다.
 
-### 10-2. 현재 `Run`은 hot key 1종만 연결됨
+### 10-2. 시나리오는 실제 동시성 시뮬레이터가 아니다
 
-UI는 공통 실행 구조로 바꿨지만, 현재 `Run` 버튼은 내부적으로 `Hot Key` 하나만 실행한다. Memory pressure와 eviction을 더 강하게 드러내려면 future scenario에서 key churn이나 multi-key workload를 추가하는 편이 좋다.
+현재 `Users`와 `Duration`은 작업량을 제어하는 공통 파라미터다. `Read`, `Write`, `Mixed` 모두 여기에 맞춰 deterministic action plan을 만들지만, worker thread나 실제 동시 접속 수를 직접 시뮬레이션하는 구조는 아니다.
 
 ### 10-3. 프론트는 계속 미세조정 대상
 

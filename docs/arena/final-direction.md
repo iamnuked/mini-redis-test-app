@@ -30,8 +30,9 @@ TTL:
 
 시나리오:
 
-- `Hot Key`
-- `TTL Expiry`
+- `Read`
+- `Write`
+- `Mixed`
 
 시각화:
 

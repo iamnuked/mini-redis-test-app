@@ -23,6 +23,6 @@ Arena는 `mini-redis`를 실제 캐시 엔진으로 쓰면서, 같은 요청을 
 - Arena는 `mini-redis` 내부 객체를 직접 import 하지 않는다.
 - Arena는 `redis-py` 클라이언트 경계로 `mini-redis` 서버에 붙는다.
 - 속도 비교 모드에서는 lane별 실제 MongoDB를 사용한다.
-- 수동 명령은 `SET`, `GET`, `DEL`만 지원한다.
-- 시나리오는 `Hot Key`, `TTL Expiry` 두 개를 제공한다.
+- 수동 명령은 `SET`, `GET`, `DEL`, `HSET`, `HGET`, `HGETALL`을 지원한다.
+- 시나리오는 `Read`, `Write`, `Mixed` 세 개를 제공한다.
 - 협업용 문서와 업무분장 문서는 활성 개발 기준에서 제외한다.

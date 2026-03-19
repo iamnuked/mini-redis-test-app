@@ -261,6 +261,13 @@ class InMemoryMiniRedisClient:
                 break
             self.delete(key)
             self._evicted_keys += 1
+        if self._used_memory_bytes() <= self._max_memory_bytes:
+            return
+        for key in protected_keys:
+            if self._used_memory_bytes() <= self._max_memory_bytes:
+                break
+            if self.delete(key):
+                self._evicted_keys += 1
 
 
 @dataclass

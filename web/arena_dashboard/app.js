@@ -1079,6 +1079,17 @@ function resetLocalState() {
   renderAll();
 }
 
+function clearCurrentSnapshots() {
+  ["redis_db", "db_only"].forEach((laneKey) => {
+    const laneState = state.lanes[laneKey];
+    laneState.latestResult = null;
+    laneState.latestRequest = null;
+    laneState.latestSeenAt = null;
+    laneState.storageCurrent = null;
+    laneState.activityActive = false;
+  });
+}
+
 async function fetchHealth() {
   try {
     const response = await fetch("/api/health");
@@ -1086,10 +1097,13 @@ async function fetchHealth() {
       throw new Error("Health request failed");
     }
     state.health = await response.json();
+    state.activeScenario = state.health?.scenario?.active_label ?? null;
     state.lastHealthAt = new Date();
     updateStorageState(state.health, state.lastHealthAt);
   } catch (_error) {
     state.health = null;
+    state.activeScenario = null;
+    clearCurrentSnapshots();
     state.lastHealthAt = new Date();
   }
   renderAll();
@@ -1295,6 +1309,7 @@ function connectEvents() {
   source.addEventListener("error", () => {
     state.sseConnected = false;
     setRequestStatus("SSE disconnected", "error");
+    fetchHealth();
   });
 }
 

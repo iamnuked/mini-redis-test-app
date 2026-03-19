@@ -146,6 +146,16 @@ def test_execute_eviction_keeps_recent_keys_when_max_memory_is_hit() -> None:
     assert service.execute(Command(name="DBSIZE", arguments=())) == RespNumber(value=2)
 
 
+def test_execute_eviction_drops_oversized_new_entry_when_it_cannot_fit() -> None:
+    service = create_command_service_with_max_memory(max_memory_bytes=10)
+
+    response = service.execute(Command(name="SET", arguments=("a", "123456789012345")))
+
+    assert response == RespSimpleString(value=RESP_OK)
+    assert service.execute(Command(name="GET", arguments=("a",))) == RespNull()
+    assert service.execute(Command(name="DBSIZE", arguments=())) == RespNumber(value=0)
+
+
 def test_execute_rejects_unsupported_command() -> None:
     service = create_command_service()
 

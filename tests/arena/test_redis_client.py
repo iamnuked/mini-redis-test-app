@@ -19,6 +19,15 @@ class InMemoryMiniRedisClientTests(unittest.TestCase):
         self.assertIsNone(client.get("session:1"))
         self.assertIsNone(client.ttl("session:1"))
 
+    def test_oversized_entry_does_not_remain_when_it_exceeds_max_memory(self) -> None:
+        client = InMemoryMiniRedisClient()
+        client.config_set_maxmemory(10)
+
+        client.set("a", "123456789012345")
+
+        self.assertLessEqual(client.info_memory()["used_memory"], 10)
+        self.assertIsNone(client.get("a"))
+
 
 class _FakePool:
     def __init__(self) -> None:

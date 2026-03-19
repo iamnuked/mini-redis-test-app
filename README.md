@@ -15,6 +15,41 @@
 
 ### 핵심 요약
 
+`mini-redis`는 스펙 기준으로 “RESP 기반 in-memory Redis의 핵심 경로”는 구현했고, “운영용 Redis가 가지는 분산/영속/고급 기능”은 의도적으로 구현하지 않았다.
+
+### 세부 사항
+
+구현한 것:
+
+- TCP 소켓 기반 서버
+- RESP 요청 파싱과 응답 직렬화
+- `HELLO 3` 협상과 `redis-py` 호환 경계
+- CLI 단일 명령 실행과 REPL
+- `String`, `Hash`, `List`, `Set`, `Sorted Set`
+- `SET`, `GET`, `DEL`, `EXPIRE`, `TTL`
+- `HSET`, `HGET`, `HDEL`, `HGETALL`
+- `LPUSH`, `RPUSH`, `LPOP`, `RPOP`, `LRANGE`
+- `SADD`, `SREM`, `SMEMBERS`, `SISMEMBER`
+- `ZADD`, `ZREM`, `ZRANGE`, `ZSCORE`
+- 지연 삭제와 background sweep 기반 TTL 처리
+- `INFO MEMORY`, `CONFIG SET/GET maxmemory`, `DBSIZE`, `FLUSHDB`
+- strict `maxmemory`와 eviction
+
+구현하지 않은 것:
+
+- 디스크 영속성
+- 복제, 클러스터링, 샤딩
+- 실제 멀티 DB 지원
+- 실제 인증과 권한 모델
+- 트랜잭션
+- Pub/Sub
+- Lua scripting
+- Streams
+- 운영 환경 수준의 고성능 최적화
+- Redis 전체 명령 집합
+
+### 핵심 요약
+
 `mini-redis`는 단순한 딕셔너리 실습이 아니라, Redis가 왜 Redis처럼 동작하는지를 보여주기 위해 TCP, RESP, 명령 파이프라인, 자료형, TTL, eviction, CLI까지 하나의 흐름으로 연결한 프로젝트다.
 
 ### 세부 사항

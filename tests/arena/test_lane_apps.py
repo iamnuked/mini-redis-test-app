@@ -25,6 +25,7 @@ class LaneAApiTests(unittest.TestCase):
             self.assertEqual(health_response.status_code, 200)
             self.assertEqual(health_response.json()["status"], "ok")
             self.assertEqual(health_response.json()["redis"]["status"], "ok")
+            self.assertIn("storage", health_response.json())
 
             seed_response = client.post(
                 "/seed",
@@ -56,7 +57,7 @@ class LaneAApiTests(unittest.TestCase):
             self.assertEqual(payload["answer_text"], '{"name":"kim"}')
             self.assertEqual(payload["answer_kind"], "value")
 
-            reset_response = client.post("/reset", json={"keys": ["user:1"]})
+            reset_response = client.post("/reset", json={"full_reset": True})
             self.assertEqual(reset_response.status_code, 200)
 
             miss_response = client.post(
@@ -90,6 +91,7 @@ class LaneBApiTests(unittest.TestCase):
             self.assertEqual(health_response.status_code, 200)
             self.assertEqual(health_response.json()["status"], "ok")
             self.assertEqual(health_response.json()["mongo"]["status"], "ok")
+            self.assertIn("storage", health_response.json())
 
             seed_response = client.post(
                 "/seed",
@@ -115,7 +117,7 @@ class LaneBApiTests(unittest.TestCase):
             self.assertEqual(payload["answer_text"], '{"name":"lee"}')
             self.assertEqual(payload["answer_kind"], "value")
 
-            reset_response = client.post("/reset", json={"keys": ["user:2"]})
+            reset_response = client.post("/reset", json={"full_reset": True})
             self.assertEqual(reset_response.status_code, 200)
 
             miss_response = client.post(

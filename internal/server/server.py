@@ -45,6 +45,7 @@ class MiniRedisServer:
             clock=self._clock,
             store_repository=self._store_repository,
             ttl_repository=self._ttl_repository,
+            max_memory_bytes=self._config.max_memory_bytes,
         )
         self._expiration_sweeper = ExpirationSweeper(
             clock=self._clock,

@@ -20,7 +20,7 @@ class ExpireService:
         self._ttl_repository = ttl_repository
         self._expiration_manager = expiration_manager
 
-    def execute(self, key: str, ttl_seconds: int) -> int:
+    def execute(self, key: str, ttl_seconds: float) -> int:
         if self._expiration_manager.purge_if_expired(key):
             return 0
 

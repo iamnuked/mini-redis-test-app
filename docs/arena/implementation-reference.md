@@ -131,6 +131,43 @@ Mongo 데이터 디렉터리는 저장소 내부 `.local/arena/*` 아래에 두�
 - 다크 톤 UI로 통일
 - 동적 패널은 CLI 로그처럼 한 줄 단위로 흐르게 구성
 
+### 3-7. 저장량 그래프와 memory control 추가
+
+이후 비교 실험을 더 현실적인 cache 조건으로 만들기 위해 Arena에 memory/TTL control을 추가했다.
+
+핵심 변화:
+
+- `mini-redis` 코어에 logical bytes 개념 추가
+- `CONFIG GET/SET maxmemory`
+- `INFO MEMORY`
+- `DBSIZE`
+- `FLUSHDB`
+- max memory 초과 시 LRU에 가까운 eviction
+- gateway memory profile state
+- gateway TTL profile state
+- `Storage Usage` 그래프 추가
+
+현재 프론트의 `Input Scenarios`는 아래 동작을 따른다.
+
+- 1행: `Run` + TTL profile 3토글
+- 2행: `Reset` + Memory Size 3토글
+
+Memory Size는 Reset 이후 변경할 수 있고, 첫 manual/scenario 실행부터 lock된다.
+
+### 3-8. Reset 의미 변경
+
+초기 Reset은 tracked key를 위주로 정리하는 성격이 강했다. 현재 Reset은 full experiment reset이다.
+
+Reset 시 수행되는 일:
+
+- lane-a Mongo 전체 clear
+- lane-b Mongo 전체 clear
+- `mini-redis` 전체 `FLUSHDB`
+- gateway known key clear
+- event history clear
+- memory lock 해제
+- 현재 선택된 memory profile 재적용
+
 ## 4. 현재 아키텍처
 
 ### 4-1. 서비스 구성
@@ -201,6 +238,7 @@ Mongo 데이터 디렉터리는 저장소 내부 `.local/arena/*` 아래에 두�
 상단 lane별 4패널 구성:
 
 - `Mongo Read History`
+- `Storage Usage`
 - `Latency History`
 - `Monitoring`
 - `Answer`
@@ -217,10 +255,12 @@ Mongo 데이터 디렉터리는 저장소 내부 `.local/arena/*` 아래에 두�
 프론트에서 표시하는 대표 정보:
 
 - latest lane 상태
-- 최근 latency 로그
-- 최근 mongo read 로그
+- 최근 latency 그래프
+- 최근 storage ops 그래프
+- 최근 storage usage 그래프
 - 최근 answer 로그
 - gateway/lane/mongo/redis/SSE health
+- memory profile / TTL profile 상태
 - manual command 입력
 - scenario 실행과 reset
 
@@ -252,21 +292,22 @@ Mongo 데이터 디렉터리는 저장소 내부 `.local/arena/*` 아래에 두�
 
 현재 제공 시나리오:
 
-- `Hot Key`
-- `TTL Expiry`
+- `Run`
+  - 현재는 내부적으로 `Hot Key` plan 실행
 
 입력값:
 
 - `Users`
 - `Duration`
-- `TTL`
+- `TTL profile`
+- `Memory profile`
 
 동작:
 
 - gateway가 scenario task를 시작
 - 각 step의 결과를 event로 브로드캐스트
 - history/answer 패널이 지속 갱신
-- reset 시 task 취소 및 key 정리
+- reset 시 task 취소 및 full arena reset 수행
 
 ### 6-3. Status / Monitoring
 
@@ -283,11 +324,10 @@ Mongo 데이터 디렉터리는 저장소 내부 `.local/arena/*` 아래에 두�
 
 추가 상태:
 
-- tracked keys
-- retained events
 - current scenario
 - last health poll
-- last request
+- current memory profile
+- current TTL profile
 - last event
 
 ## 7. 현재까지 생성/편집한 주요 파일
@@ -315,12 +355,14 @@ Mongo 데이터 디렉터리는 저장소 내부 `.local/arena/*` 아래에 두�
 - `internal/arena/api/app.py`
 - `internal/arena/api/manual_command_api.py`
 - `internal/arena/api/scenario_api.py`
+- `internal/arena/api/control_api.py`
 - `internal/arena/api/events_api.py`
 - `internal/arena/api/health_api.py`
 - `internal/arena/gateway/service.py`
 - `internal/arena/gateway/lane_client.py`
 - `internal/arena/gateway/result_normalizer.py`
 - `internal/arena/gateway/models.py`
+- `internal/arena/control_profiles.py`
 
 ### 7-4. Lane 공통/핵심 로직
 
@@ -329,6 +371,7 @@ Mongo 데이터 디렉터리는 저장소 내부 `.local/arena/*` 아래에 두�
 - `internal/arena/lane/db_only_adapter.py`
 - `internal/arena/lane/redis_client.py`
 - `internal/arena/lane/cache_policy.py`
+- `internal/service/command_service.py`
 
 ### 7-5. Lane 서비스
 
@@ -458,7 +501,11 @@ node --check web/arena_dashboard/app.js
 
 strict benchmark 수준의 결과를 원하면 lane별 자원 분리나 컨테이너/호스트 분리가 추가로 필요하다.
 
-### 10-2. 프론트는 계속 미세조정 대상
+### 10-2. 현재 `Run`은 hot key 1종만 연결됨
+
+UI는 공통 실행 구조로 바꿨지만, 현재 `Run` 버튼은 내부적으로 `Hot Key` 하나만 실행한다. Memory pressure와 eviction을 더 강하게 드러내려면 future scenario에서 key churn이나 multi-key workload를 추가하는 편이 좋다.
+
+### 10-3. 프론트는 계속 미세조정 대상
 
 현재 프론트는 요구사항에 맞춰 크게 재구성됐지만, 실제 브라우저 해상도에 따라 다음이 다시 조정될 수 있다.
 
@@ -467,11 +514,11 @@ strict benchmark 수준의 결과를 원하면 lane별 자원 분리나 컨테�
 - 로그 컬럼 폭
 - 모바일 또는 저해상도 대응
 
-### 10-3. Docker 경로는 문서화됐지만 로컬 `mongod` 경로가 더 확실하다
+### 10-4. Docker 경로는 문서화됐지만 로컬 `mongod` 경로가 더 확실하다
 
 `deploy/docker-compose.arena.yml`은 준비되어 있다. 다만 실제 개발 과정에서는 로컬 `mongod` 기반 검증을 먼저 확정했다. 이유는 작업 환경에 Docker가 항상 있는 것이 아니었기 때문이다.
 
-### 10-4. CSS 정리 여지
+### 10-5. CSS 정리 여지
 
 프론트가 여러 차례 레이아웃 변경을 거치면서 사용하지 않는 보조 스타일이 일부 남아 있을 가능성이 있다. 동작에는 문제가 없지만, 추후 스타일 정리 리팩터링 여지는 있다.
 

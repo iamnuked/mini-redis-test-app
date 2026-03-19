@@ -58,6 +58,12 @@ class GatewayResetTests(unittest.IsolatedAsyncioTestCase):
             event_history=EventHistory(),
         )
 
+    async def test_initialize_applies_default_memory_profile_without_locking(self) -> None:
+        await self.service.initialize()
+
+        self.assertEqual(self.redis_client.info_memory()["maxmemory"], 512)
+        self.assertFalse(self.service._memory_locked)
+
     async def test_reset_state_deletes_known_keys_only(self) -> None:
         await self.service.execute_manual_command(
             ManualCommandInput(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 import os
 
 from fastapi import FastAPI
@@ -13,8 +14,6 @@ from internal.arena.mongo.repository import build_arena_repository
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Arena Lane A", version="0.1.0")
-
     redis_settings = MiniRedisConnectionSettings.from_env()
     if "ARENA_REDIS_BACKEND" not in os.environ:
         redis_settings.backend = "redis_py"
@@ -25,6 +24,13 @@ def create_app() -> FastAPI:
     redis_client = build_mini_redis_client(redis_settings)
     repository = build_arena_repository(repository_settings)
     executor = RedisDBLaneAdapter(redis_client=redis_client, repository=repository)
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        yield
+        redis_client.close()
+
+    app = FastAPI(title="Arena Lane A", version="0.1.0", lifespan=lifespan)
 
     app.state.executor = executor
     app.state.repository = repository

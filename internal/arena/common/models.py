@@ -3,19 +3,23 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
-CommandName = Literal["SET", "GET", "DEL"]
+WRONG_TYPE_MESSAGE = "WRONGTYPE Operation against a key holding the wrong kind of value"
+
+CommandName = Literal["SET", "GET", "DEL", "HSET", "HGET", "HGETALL"]
 LaneName = Literal["redis_db", "db_only"]
 RequestMode = Literal["manual", "scenario"]
 LaneStatus = Literal["ok", "error"]
-ScenarioId = Literal["hot_key", "ttl_expiry"]
+ScenarioId = Literal["read", "write", "mixed"]
 
 
 @dataclass
 class ManualCommandInput:
     command: CommandName
     key: str
+    field: str | None = None
     value: str | None = None
     ttl_enabled: bool = False
+    ttl_seconds: float | None = None
 
 
 @dataclass
@@ -24,8 +28,10 @@ class ArenaRequest:
     mode: RequestMode
     command: CommandName
     key: str
+    field: str | None = None
     value: str | None = None
     ttl_enabled: bool = False
+    ttl_seconds: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -37,8 +43,14 @@ class ArenaRequest:
             mode=payload["mode"],
             command=payload["command"],
             key=payload["key"],
+            field=payload.get("field"),
             value=payload.get("value"),
             ttl_enabled=bool(payload.get("ttl_enabled", False)),
+            ttl_seconds=(
+                float(payload["ttl_seconds"])
+                if payload.get("ttl_seconds") is not None
+                else None
+            ),
         )
 
 
@@ -154,7 +166,9 @@ class ScenarioRunInput:
     scenario_id: ScenarioId
     users: int
     duration_seconds: int
+    read_hot_percent: int | None = None
     ttl_enabled: bool = False
+    ttl_seconds: float | None = None
 
 
 @dataclass
@@ -177,6 +191,7 @@ class EventEnvelope:
 @dataclass
 class ResetStateInput:
     keys: list[str] = field(default_factory=list)
+    full_reset: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -187,6 +202,7 @@ class SeedStateInput:
     documents: dict[str, str] = field(default_factory=dict)
     warm_cache: bool = False
     ttl_enabled: bool = False
+    ttl_seconds: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

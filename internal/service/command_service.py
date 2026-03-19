@@ -8,10 +8,11 @@ from internal.protocol.resp.messages import (
     ERR_UNSUPPORTED_AUTH,
     ERR_UNSUPPORTED_COMMAND,
     ERR_WRONG_TYPE,
+    RESP_OK,
 )
 from internal.protocol.resp.types import (
-    RespBlobString,
     RespArray,
+    RespBlobString,
     RespMap,
     RespNull,
     RespNumber,
@@ -34,6 +35,7 @@ class CommandService:
         clock: Clock,
         store_repository: StoreRepository,
         ttl_repository: TtlRepository,
+        max_memory_bytes: int | None = None,
     ) -> None:
         ttl_calculator = TtlCalculator()
         expiration_manager = ExpirationManager(
@@ -64,6 +66,10 @@ class CommandService:
             ttl_repository,
             expiration_manager,
         )
+        self._max_memory_bytes = self._normalize_max_memory_bytes(max_memory_bytes)
+        self._access_clock = 0
+        self._access_order: dict[str, int] = {}
+        self._evicted_keys = 0
 
     def execute(self, command: Command) -> RespValue:
         if command.name == "AUTH":
@@ -75,37 +81,48 @@ class CommandService:
         if command.name == "CLIENT":
             return self._execute_client(command.arguments)
         if command.name == "SET":
-            return RespSimpleString(
-                value=self._set_service.execute(command.arguments[0], command.arguments[1])
+            key = command.arguments[0]
+            response = RespSimpleString(
+                value=self._set_service.execute(key, command.arguments[1])
             )
+            self._touch_key(key)
+            self._ensure_max_memory(protected_keys=(key,))
+            return response
         if command.name == "GET":
-            entry = self._get_service.execute(command.arguments[0])
+            key = command.arguments[0]
+            entry = self._get_service.execute(key)
             if entry is None:
+                self._forget_key(key)
                 return RespNull()
+            self._touch_key(key)
             return RespBlobString(value=self._require_string(entry))
         if command.name == "DEL":
-            return RespNumber(
-                value=self._del_service.execute(command.arguments[0]),
-            )
+            key = command.arguments[0]
+            deleted = self._del_service.execute(key)
+            self._forget_key(key)
+            return RespNumber(value=deleted)
         if command.name == "EXPIRE":
-            return RespNumber(
-                value=self._expire_service.execute(
-                    command.arguments[0],
-                    int(command.arguments[1]),
-                ),
-            )
+            key = command.arguments[0]
+            applied = self._expire_service.execute(key, float(command.arguments[1]))
+            if applied:
+                self._touch_key(key)
+            return RespNumber(value=applied)
         if command.name == "TTL":
-            return RespNumber(
-                value=self._ttl_service.execute(command.arguments[0]),
-            )
+            return RespNumber(value=self._ttl_service.execute(command.arguments[0]))
+        if command.name == "DBSIZE":
+            return RespNumber(value=self._execute_dbsize())
+        if command.name == "FLUSHDB":
+            self._execute_flushdb()
+            return RespSimpleString(value=RESP_OK)
+        if command.name == "INFO":
+            return RespBlobString(value=self._execute_info(command.arguments))
+        if command.name == "CONFIG":
+            return self._execute_config(command.arguments)
         if command.name == "HSET":
-            return RespNumber(
-                value=self._execute_hset(
-                    command.arguments[0],
-                    command.arguments[1],
-                    command.arguments[2],
-                )
-            )
+            key = command.arguments[0]
+            created = self._execute_hset(key, command.arguments[1], command.arguments[2])
+            self._ensure_max_memory(protected_keys=(key,))
+            return RespNumber(value=created)
         if command.name == "HGET":
             value = self._execute_hget(command.arguments[0], command.arguments[1])
             if value is None:
@@ -116,9 +133,15 @@ class CommandService:
         if command.name == "HGETALL":
             return self._execute_hgetall(command.arguments[0])
         if command.name == "LPUSH":
-            return RespNumber(value=self._execute_lpush(command.arguments[0], command.arguments[1:]))
+            key = command.arguments[0]
+            length = self._execute_lpush(key, command.arguments[1:])
+            self._ensure_max_memory(protected_keys=(key,))
+            return RespNumber(value=length)
         if command.name == "RPUSH":
-            return RespNumber(value=self._execute_rpush(command.arguments[0], command.arguments[1:]))
+            key = command.arguments[0]
+            length = self._execute_rpush(key, command.arguments[1:])
+            self._ensure_max_memory(protected_keys=(key,))
+            return RespNumber(value=length)
         if command.name == "LPOP":
             value = self._execute_lpop(command.arguments[0])
             if value is None:
@@ -136,7 +159,10 @@ class CommandService:
                 int(command.arguments[2]),
             )
         if command.name == "SADD":
-            return RespNumber(value=self._execute_sadd(command.arguments[0], command.arguments[1:]))
+            key = command.arguments[0]
+            created = self._execute_sadd(key, command.arguments[1:])
+            self._ensure_max_memory(protected_keys=(key,))
+            return RespNumber(value=created)
         if command.name == "SREM":
             return RespNumber(value=self._execute_srem(command.arguments[0], command.arguments[1:]))
         if command.name == "SMEMBERS":
@@ -144,7 +170,10 @@ class CommandService:
         if command.name == "SISMEMBER":
             return RespNumber(value=self._execute_sismember(command.arguments[0], command.arguments[1]))
         if command.name == "ZADD":
-            return RespNumber(value=self._execute_zadd(command.arguments[0], command.arguments[1:]))
+            key = command.arguments[0]
+            created = self._execute_zadd(key, command.arguments[1:])
+            self._ensure_max_memory(protected_keys=(key,))
+            return RespNumber(value=created)
         if command.name == "ZREM":
             return RespNumber(value=self._execute_zrem(command.arguments[0], command.arguments[1:]))
         if command.name == "ZRANGE":
@@ -176,6 +205,61 @@ class CommandService:
             return RespSimpleString(value="OK")
         raise CommandValidationError(ERR_UNSUPPORTED_COMMAND)
 
+    def _execute_dbsize(self) -> int:
+        self._purge_all_expired_keys()
+        return len(self._store_repository.list_keys())
+
+    def _execute_flushdb(self) -> None:
+        for key in list(self._store_repository.list_keys()):
+            self._delete_entry_and_ttl(key)
+        self._access_order.clear()
+        self._evicted_keys = 0
+
+    def _execute_info(self, arguments: tuple[str, ...]) -> str:
+        if arguments and arguments[0].upper() not in {"ALL", "MEMORY"}:
+            raise CommandValidationError(ERR_UNSUPPORTED_COMMAND)
+
+        self._purge_all_expired_keys()
+        used_memory = self._current_memory_bytes()
+        max_memory = self._max_memory_bytes or 0
+        key_count = len(self._store_repository.list_keys())
+
+        return "\r\n".join(
+            [
+                "# Memory",
+                f"used_memory:{used_memory}",
+                f"maxmemory:{max_memory}",
+                f"keys:{key_count}",
+                f"evicted_keys:{self._evicted_keys}",
+            ]
+        )
+
+    def _execute_config(self, arguments: tuple[str, ...]) -> RespValue:
+        subcommand = arguments[0].upper()
+        parameter = arguments[1].lower()
+        if parameter != "maxmemory":
+            raise CommandValidationError(ERR_UNSUPPORTED_COMMAND)
+
+        if subcommand == "GET":
+            return RespArray(
+                items=(
+                    RespBlobString(value="maxmemory"),
+                    RespBlobString(value=str(self._max_memory_bytes or 0)),
+                )
+            )
+
+        if subcommand == "SET":
+            self._max_memory_bytes = self._normalize_max_memory_bytes(int(arguments[2]))
+            self._ensure_max_memory()
+            return RespSimpleString(value=RESP_OK)
+
+        raise CommandValidationError(ERR_UNSUPPORTED_COMMAND)
+
+    def _normalize_max_memory_bytes(self, value: int | None) -> int | None:
+        if value is None or value <= 0:
+            return None
+        return value
+
     def _require_string(self, entry: ValueEntry) -> str:
         if entry.value_type is not ValueType.STRING:
             raise CommandValidationError(ERR_WRONG_TYPE)
@@ -183,7 +267,12 @@ class CommandService:
 
     def _get_live_entry(self, key: str) -> ValueEntry | None:
         self._expiration_manager.purge_if_expired(key)
-        return self._store_repository.get(key)
+        entry = self._store_repository.get(key)
+        if entry is None:
+            self._forget_key(key)
+            return None
+        self._touch_key(key)
+        return entry
 
     def _get_typed_entry(self, key: str, value_type: ValueType) -> ValueEntry | None:
         entry = self._get_live_entry(key)
@@ -193,15 +282,96 @@ class CommandService:
             raise CommandValidationError(ERR_WRONG_TYPE)
         return entry
 
+    def _store_entry(self, key: str, entry: ValueEntry) -> None:
+        self._store_repository.set(key, entry)
+        self._touch_key(key)
+
     def _delete_entry_and_ttl(self, key: str) -> None:
         self._store_repository.delete(key)
         self._ttl_repository.delete_expiration(key)
+        self._forget_key(key)
+
+    def _touch_key(self, key: str) -> None:
+        if self._store_repository.get(key) is None:
+            self._forget_key(key)
+            return
+        self._access_clock += 1
+        self._access_order[key] = self._access_clock
+
+    def _forget_key(self, key: str) -> None:
+        self._access_order.pop(key, None)
+
+    def _purge_all_expired_keys(self) -> None:
+        for key in list(self._ttl_repository.list_keys()):
+            self._expiration_manager.purge_if_expired(key)
+            if self._store_repository.get(key) is None:
+                self._forget_key(key)
+
+    def _current_memory_bytes(self) -> int:
+        total = 0
+        for key in list(self._store_repository.list_keys()):
+            entry = self._store_repository.get(key)
+            if entry is None:
+                self._forget_key(key)
+                continue
+            total += self._estimate_entry_bytes(key, entry)
+        return total
+
+    def _estimate_entry_bytes(self, key: str, entry: ValueEntry) -> int:
+        size = len(key.encode("utf-8"))
+        if entry.value_type is ValueType.STRING:
+            return size + len(entry.value.encode("utf-8"))
+        if entry.value_type is ValueType.HASH:
+            return size + sum(
+                len(field.encode("utf-8")) + len(value.encode("utf-8"))
+                for field, value in entry.value.items()
+            )
+        if entry.value_type is ValueType.LIST:
+            return size + sum(len(value.encode("utf-8")) for value in entry.value)
+        if entry.value_type is ValueType.SET:
+            return size + sum(len(value.encode("utf-8")) for value in entry.value)
+        if entry.value_type is ValueType.ZSET:
+            return size + sum(
+                len(member.encode("utf-8")) + len(format(score, "g").encode("utf-8"))
+                for member, score in entry.value.items()
+            )
+        return size
+
+    def _eviction_candidate(self, protected_keys: tuple[str, ...]) -> str | None:
+        protected = set(protected_keys)
+        oldest_key: str | None = None
+        oldest_access = float("inf")
+
+        for key in self._store_repository.list_keys():
+            if key in protected:
+                continue
+            if self._store_repository.get(key) is None:
+                self._forget_key(key)
+                continue
+            access = self._access_order.get(key, 0)
+            if access < oldest_access:
+                oldest_access = access
+                oldest_key = key
+
+        return oldest_key
+
+    def _ensure_max_memory(self, protected_keys: tuple[str, ...] = ()) -> None:
+        if self._max_memory_bytes is None:
+            return
+
+        self._purge_all_expired_keys()
+        while self._current_memory_bytes() > self._max_memory_bytes:
+            key = self._eviction_candidate(protected_keys)
+            if key is None:
+                break
+            self._delete_entry_and_ttl(key)
+            self._evicted_keys += 1
 
     def _execute_hset(self, key: str, field: str, value: str) -> int:
         entry = self._get_typed_entry(key, ValueType.HASH)
         if entry is None:
             hash_value: dict[str, str] = {}
-            self._store_repository.set(
+            self._store_entry(
                 key,
                 ValueEntry(value_type=ValueType.HASH, value=hash_value),
             )
@@ -210,6 +380,7 @@ class CommandService:
 
         created = 1 if field not in hash_value else 0
         hash_value[field] = value
+        self._touch_key(key)
         return created
 
     def _execute_hget(self, key: str, field: str) -> str | None:
@@ -246,7 +417,7 @@ class CommandService:
         entry = self._get_typed_entry(key, ValueType.LIST)
         if entry is None:
             list_value: list[str] = []
-            self._store_repository.set(
+            self._store_entry(
                 key,
                 ValueEntry(value_type=ValueType.LIST, value=list_value),
             )
@@ -257,11 +428,13 @@ class CommandService:
         list_value = self._get_or_create_list(key)
         for value in values:
             list_value.insert(0, value)
+        self._touch_key(key)
         return len(list_value)
 
     def _execute_rpush(self, key: str, values: tuple[str, ...]) -> int:
         list_value = self._get_or_create_list(key)
         list_value.extend(values)
+        self._touch_key(key)
         return len(list_value)
 
     def _execute_lpop(self, key: str) -> str | None:
@@ -293,7 +466,7 @@ class CommandService:
         entry = self._get_typed_entry(key, ValueType.SET)
         if entry is None:
             set_value: set[str] = set()
-            self._store_repository.set(
+            self._store_entry(
                 key,
                 ValueEntry(value_type=ValueType.SET, value=set_value),
             )
@@ -307,6 +480,7 @@ class CommandService:
             if member not in set_value:
                 created += 1
             set_value.add(member)
+        self._touch_key(key)
         return created
 
     def _execute_srem(self, key: str, members: tuple[str, ...]) -> int:
@@ -340,7 +514,7 @@ class CommandService:
         entry = self._get_typed_entry(key, ValueType.ZSET)
         if entry is None:
             zset_value: dict[str, float] = {}
-            self._store_repository.set(
+            self._store_entry(
                 key,
                 ValueEntry(value_type=ValueType.ZSET, value=zset_value),
             )
@@ -356,6 +530,7 @@ class CommandService:
             if member not in zset_value:
                 created += 1
             zset_value[member] = score
+        self._touch_key(key)
         return created
 
     def _execute_zrem(self, key: str, members: tuple[str, ...]) -> int:

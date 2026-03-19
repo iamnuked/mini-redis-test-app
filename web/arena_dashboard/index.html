@@ -10,192 +10,194 @@
     <main class="dashboard-shell">
       <section class="lane-columns">
         <section class="lane-column lane-column-redis">
-          <header class="lane-banner">mini-redis + MongoDB</header>
+          <header class="lane-banner lane-banner-redis">
+            <div class="lane-banner-metrics">
+              <span class="banner-metric">
+                <em>Service</em>
+                <strong data-banner-field="redis_service_time">-</strong>
+              </span>
+              <span class="banner-metric">
+                <em>Gateway</em>
+                <strong data-banner-field="redis_gateway_rtt">-</strong>
+              </span>
+              <span class="banner-metric">
+                <em>DB</em>
+                <strong data-banner-field="redis_db_time">-</strong>
+              </span>
+              <span class="banner-metric">
+                <em>Redis</em>
+                <strong data-banner-field="redis_redis_time">-</strong>
+              </span>
+            </div>
+            <h1 class="lane-banner-title">mini-redis + MongoDB</h1>
+          </header>
 
           <div class="lane-panel-grid lane-panel-grid-redis">
-            <article class="panel dynamic-panel graph-panel">
-              <div class="panel-header">
-                <h2>redis_db Mongo Read History</h2>
-                <span id="redis-mongo-count" class="panel-chip">0</span>
-              </div>
-              <div class="panel-body graph-body">
-                <canvas id="redis-mongo-chart" class="chart-canvas"></canvas>
-                <div class="graph-legend">
-                  <span><i class="legend-swatch legend-redis-read"></i>Redis Read</span>
-                  <span><i class="legend-swatch legend-mongo-read"></i>Mongo Read</span>
-                  <span><i class="legend-swatch legend-mongo-write"></i>Mongo Write</span>
+            <div class="lane-stack lane-stack-three">
+              <article class="panel dynamic-panel graph-panel">
+                <div class="panel-header">
+                  <h2>Latency</h2>
+                  <span class="activity-signal" data-lane-activity="redis_db" aria-hidden="true"></span>
                 </div>
-              </div>
-            </article>
-
-            <article class="panel dynamic-panel graph-panel">
-              <div class="panel-header">
-                <h2>redis_db Latency History</h2>
-                <span id="redis-latency-count" class="panel-chip">0</span>
-              </div>
-              <div class="panel-body graph-body">
-                <canvas id="redis-latency-chart" class="chart-canvas"></canvas>
-                <div class="graph-legend">
-                  <span><i class="legend-swatch legend-set"></i>SET</span>
-                  <span><i class="legend-swatch legend-get"></i>GET</span>
-                  <span><i class="legend-swatch legend-del"></i>DEL</span>
+                <div class="panel-body graph-body">
+                  <canvas id="redis-latency-chart" class="chart-canvas"></canvas>
+                  <div class="graph-legend">
+                    <span><i class="legend-swatch legend-set"></i>SET</span>
+                    <span><i class="legend-swatch legend-get"></i>GET</span>
+                    <span><i class="legend-swatch legend-del"></i>DEL</span>
+                  </div>
                 </div>
-              </div>
-            </article>
+              </article>
 
-            <article class="panel monitor-panel" id="monitor-redis">
-              <div class="panel-header">
-                <h2>redis_db Monitoring</h2>
-                <span class="panel-chip panel-chip-strong">redis_db</span>
-              </div>
-              <table class="monitor-table">
-                <tbody>
-                  <tr>
-                    <th>Status</th>
-                    <td data-monitor-field="status">-</td>
-                    <th>Samples</th>
-                    <td data-monitor-field="samples">0</td>
-                  </tr>
-                  <tr>
-                    <th>Last Request</th>
-                    <td colspan="3" data-monitor-field="request">-</td>
-                  </tr>
-                  <tr>
-                    <th>Cache</th>
-                    <td data-monitor-field="cache">-</td>
-                    <th>Mongo Reads</th>
-                    <td data-monitor-field="mongo_reads">-</td>
-                  </tr>
-                  <tr>
-                    <th>Service</th>
-                    <td data-monitor-field="service_time">-</td>
-                    <th>DB</th>
-                    <td data-monitor-field="db_time">-</td>
-                  </tr>
-                  <tr>
-                    <th>Redis</th>
-                    <td data-monitor-field="redis_time">-</td>
-                    <th>Gateway</th>
-                    <td data-monitor-field="gateway_rtt">-</td>
-                  </tr>
-                  <tr>
-                    <th>Answer</th>
-                    <td data-monitor-field="answer_kind">-</td>
-                    <th>Path</th>
-                    <td data-monitor-field="path">-</td>
-                  </tr>
-                  <tr>
-                    <th>Storage</th>
-                    <td colspan="3" data-monitor-field="storage">-</td>
-                  </tr>
-                </tbody>
-              </table>
-            </article>
+              <article class="panel dynamic-panel graph-panel">
+                <div class="panel-header">
+                  <h2>Storage Activity</h2>
+                  <span class="activity-signal" data-lane-activity="redis_db" aria-hidden="true"></span>
+                </div>
+                <div class="panel-body graph-body">
+                  <canvas id="redis-mongo-chart" class="chart-canvas"></canvas>
+                  <div class="graph-legend">
+                    <span><i class="legend-swatch legend-redis-read"></i>Redis Read</span>
+                    <span><i class="legend-swatch legend-mongo-read"></i>Mongo Read</span>
+                    <span><i class="legend-swatch legend-mongo-write"></i>Mongo Write</span>
+                  </div>
+                </div>
+              </article>
 
-            <article class="panel panel-scroll answer-panel dynamic-panel">
-              <div class="panel-header">
-                <h2>redis_db Answer</h2>
-                <span id="redis-answer-count" class="panel-chip">0</span>
-              </div>
-              <div class="panel-body scroll-body">
-                <ol id="redis-answer-log" class="stream-list answer-list"></ol>
-              </div>
-            </article>
+              <article class="panel dynamic-panel graph-panel">
+                <div class="panel-header">
+                  <h2>Storage Usage</h2>
+                  <span class="activity-signal" data-lane-activity="redis_db" aria-hidden="true"></span>
+                </div>
+                <div class="panel-body graph-body">
+                  <canvas id="redis-storage-chart" class="chart-canvas"></canvas>
+                  <div class="graph-legend">
+                    <span><i class="legend-swatch legend-redis-read"></i>Redis</span>
+                    <span><i class="legend-swatch legend-mongo-read"></i>DB</span>
+                  </div>
+                </div>
+              </article>
+            </div>
+
+            <div class="lane-answer-column">
+              <article class="panel panel-scroll answer-panel dynamic-panel">
+                <div class="panel-header answer-header answer-header-redis">
+                  <h2>Answer</h2>
+                  <span class="answer-header-spacer" aria-hidden="true"></span>
+                  <div class="answer-balance answer-balance-redis" aria-hidden="true">
+                    <span class="answer-balance-slot" data-answer-balance-slot="redis-0"></span>
+                    <span class="answer-balance-slot" data-answer-balance-slot="redis-1"></span>
+                    <span class="answer-balance-slot" data-answer-balance-slot="redis-2"></span>
+                    <span class="answer-balance-slot" data-answer-balance-slot="redis-3"></span>
+                    <span class="answer-balance-slot" data-answer-balance-slot="redis-4"></span>
+                    <span class="answer-balance-slot" data-answer-balance-slot="redis-5"></span>
+                    <span class="answer-balance-slot" data-answer-balance-slot="redis-6"></span>
+                    <span class="answer-balance-slot" data-answer-balance-slot="redis-7"></span>
+                    <span class="answer-balance-slot" data-answer-balance-slot="redis-8"></span>
+                  </div>
+                  <span id="redis-answer-count" class="panel-chip">0</span>
+                </div>
+                <div class="panel-body scroll-body">
+                  <ol id="redis-answer-log" class="stream-list answer-list"></ol>
+                </div>
+              </article>
+            </div>
           </div>
         </section>
 
         <section class="lane-column lane-column-db">
-          <header class="lane-banner">MongoDB Only</header>
+          <header class="lane-banner lane-banner-db">
+            <h1 class="lane-banner-title">MongoDB Only</h1>
+            <div class="lane-banner-metrics">
+              <span class="banner-metric">
+                <em>Redis</em>
+                <strong data-banner-field="db_redis_time">-</strong>
+              </span>
+              <span class="banner-metric">
+                <em>DB</em>
+                <strong data-banner-field="db_db_time">-</strong>
+              </span>
+              <span class="banner-metric">
+                <em>Gateway</em>
+                <strong data-banner-field="db_gateway_rtt">-</strong>
+              </span>
+              <span class="banner-metric">
+                <em>Service</em>
+                <strong data-banner-field="db_service_time">-</strong>
+              </span>
+            </div>
+          </header>
 
           <div class="lane-panel-grid lane-panel-grid-db">
-            <article class="panel dynamic-panel graph-panel">
-              <div class="panel-header">
-                <h2>db_only Latency History</h2>
-                <span id="db-latency-count" class="panel-chip">0</span>
-              </div>
-              <div class="panel-body graph-body">
-                <canvas id="db-latency-chart" class="chart-canvas"></canvas>
-                <div class="graph-legend">
-                  <span><i class="legend-swatch legend-set"></i>SET</span>
-                  <span><i class="legend-swatch legend-get"></i>GET</span>
-                  <span><i class="legend-swatch legend-del"></i>DEL</span>
+            <div class="lane-answer-column">
+              <article class="panel panel-scroll answer-panel dynamic-panel">
+                <div class="panel-header answer-header answer-header-db">
+                  <span id="db-answer-count" class="panel-chip">0</span>
+                  <div class="answer-balance answer-balance-db" aria-hidden="true">
+                    <span class="answer-balance-slot" data-answer-balance-slot="db-0"></span>
+                    <span class="answer-balance-slot" data-answer-balance-slot="db-1"></span>
+                    <span class="answer-balance-slot" data-answer-balance-slot="db-2"></span>
+                    <span class="answer-balance-slot" data-answer-balance-slot="db-3"></span>
+                    <span class="answer-balance-slot" data-answer-balance-slot="db-4"></span>
+                    <span class="answer-balance-slot" data-answer-balance-slot="db-5"></span>
+                    <span class="answer-balance-slot" data-answer-balance-slot="db-6"></span>
+                    <span class="answer-balance-slot" data-answer-balance-slot="db-7"></span>
+                    <span class="answer-balance-slot" data-answer-balance-slot="db-8"></span>
+                  </div>
+                  <span class="answer-header-spacer" aria-hidden="true"></span>
+                  <h2>Answer</h2>
                 </div>
-              </div>
-            </article>
-
-            <article class="panel dynamic-panel graph-panel">
-              <div class="panel-header">
-                <h2>db_only Mongo Read History</h2>
-                <span id="db-mongo-count" class="panel-chip">0</span>
-              </div>
-              <div class="panel-body graph-body">
-                <canvas id="db-mongo-chart" class="chart-canvas"></canvas>
-                <div class="graph-legend">
-                  <span><i class="legend-swatch legend-redis-read"></i>Redis Read</span>
-                  <span><i class="legend-swatch legend-mongo-read"></i>Mongo Read</span>
-                  <span><i class="legend-swatch legend-mongo-write"></i>Mongo Write</span>
+                <div class="panel-body scroll-body">
+                  <ol id="db-answer-log" class="stream-list answer-list"></ol>
                 </div>
-              </div>
-            </article>
+              </article>
+            </div>
 
-            <article class="panel panel-scroll answer-panel dynamic-panel">
-              <div class="panel-header">
-                <h2>db_only Answer</h2>
-                <span id="db-answer-count" class="panel-chip">0</span>
-              </div>
-              <div class="panel-body scroll-body">
-                <ol id="db-answer-log" class="stream-list answer-list"></ol>
-              </div>
-            </article>
+            <div class="lane-stack lane-stack-three">
+              <article class="panel dynamic-panel graph-panel">
+                <div class="panel-header">
+                  <h2>Latency</h2>
+                  <span class="activity-signal" data-lane-activity="db_only" aria-hidden="true"></span>
+                </div>
+                <div class="panel-body graph-body">
+                  <canvas id="db-latency-chart" class="chart-canvas"></canvas>
+                  <div class="graph-legend">
+                    <span><i class="legend-swatch legend-set"></i>SET</span>
+                    <span><i class="legend-swatch legend-get"></i>GET</span>
+                    <span><i class="legend-swatch legend-del"></i>DEL</span>
+                  </div>
+                </div>
+              </article>
 
-            <article class="panel monitor-panel" id="monitor-db">
-              <div class="panel-header">
-                <h2>db_only Monitoring</h2>
-                <span class="panel-chip panel-chip-muted">db_only</span>
-              </div>
-              <table class="monitor-table">
-                <tbody>
-                  <tr>
-                    <th>Status</th>
-                    <td data-monitor-field="status">-</td>
-                    <th>Samples</th>
-                    <td data-monitor-field="samples">0</td>
-                  </tr>
-                  <tr>
-                    <th>Last Request</th>
-                    <td colspan="3" data-monitor-field="request">-</td>
-                  </tr>
-                  <tr>
-                    <th>Cache</th>
-                    <td data-monitor-field="cache">-</td>
-                    <th>Mongo Reads</th>
-                    <td data-monitor-field="mongo_reads">-</td>
-                  </tr>
-                  <tr>
-                    <th>Service</th>
-                    <td data-monitor-field="service_time">-</td>
-                    <th>DB</th>
-                    <td data-monitor-field="db_time">-</td>
-                  </tr>
-                  <tr>
-                    <th>Redis</th>
-                    <td data-monitor-field="redis_time">-</td>
-                    <th>Gateway</th>
-                    <td data-monitor-field="gateway_rtt">-</td>
-                  </tr>
-                  <tr>
-                    <th>Answer</th>
-                    <td data-monitor-field="answer_kind">-</td>
-                    <th>Path</th>
-                    <td data-monitor-field="path">-</td>
-                  </tr>
-                  <tr>
-                    <th>Storage</th>
-                    <td colspan="3" data-monitor-field="storage">-</td>
-                  </tr>
-                </tbody>
-              </table>
-            </article>
+              <article class="panel dynamic-panel graph-panel">
+                <div class="panel-header">
+                  <h2>Storage Activity</h2>
+                  <span class="activity-signal" data-lane-activity="db_only" aria-hidden="true"></span>
+                </div>
+                <div class="panel-body graph-body">
+                  <canvas id="db-mongo-chart" class="chart-canvas"></canvas>
+                  <div class="graph-legend">
+                    <span><i class="legend-swatch legend-redis-read"></i>Redis Read</span>
+                    <span><i class="legend-swatch legend-mongo-read"></i>Mongo Read</span>
+                    <span><i class="legend-swatch legend-mongo-write"></i>Mongo Write</span>
+                  </div>
+                </div>
+              </article>
+
+              <article class="panel dynamic-panel graph-panel">
+                <div class="panel-header">
+                  <h2>Storage Usage</h2>
+                  <span class="activity-signal" data-lane-activity="db_only" aria-hidden="true"></span>
+                </div>
+                <div class="panel-body graph-body">
+                  <canvas id="db-storage-chart" class="chart-canvas"></canvas>
+                  <div class="graph-legend">
+                    <span><i class="legend-swatch legend-redis-na"></i>Redis N/A</span>
+                    <span><i class="legend-swatch legend-mongo-read"></i>DB</span>
+                  </div>
+                </div>
+              </article>
+            </div>
           </div>
         </section>
       </section>
@@ -234,24 +236,16 @@
                 <td id="status-mongo-b">-</td>
               </tr>
               <tr>
-                <th>Tracked Keys</th>
-                <td id="status-tracked-keys">0</td>
-                <th>Retained Events</th>
-                <td id="status-retained-events">0</td>
-              </tr>
-              <tr>
                 <th>Scenario</th>
                 <td id="status-scenario">Idle</td>
                 <th>Last Health</th>
                 <td id="status-last-health">-</td>
               </tr>
               <tr>
-                <th>Last Request</th>
-                <td colspan="3" id="status-last-request">-</td>
-              </tr>
-              <tr>
-                <th>Last Event</th>
-                <td colspan="3" id="status-last-event">-</td>
+                <th>Memory</th>
+                <td id="status-memory">-</td>
+                <th>TTL</th>
+                <td id="status-ttl">-</td>
               </tr>
             </tbody>
           </table>
@@ -263,13 +257,41 @@
             <span class="panel-chip">live</span>
           </div>
 
-          <div class="manual-grid manual-grid-top">
-            <label class="manual-field">
+          <div class="manual-settings-row">
+            <div class="manual-setting-group manual-setting-group-memory">
+              <span class="field-label">Memory</span>
+              <div class="toggle-cluster toggle-cluster-memory" role="group" aria-label="Memory profile">
+                <button class="toggle-button" data-memory-profile="small" type="button">256B</button>
+                <button class="toggle-button" data-memory-profile="medium" type="button">512B</button>
+                <button class="toggle-button" data-memory-profile="large" type="button">1024B</button>
+                <button class="toggle-button" data-memory-profile="xlarge" type="button">2048B</button>
+              </div>
+            </div>
+
+            <div class="manual-setting-group manual-setting-group-ttl">
+              <span class="field-label">TTL</span>
+              <div class="toggle-cluster toggle-cluster-ttl" role="group" aria-label="TTL profile">
+                <button class="toggle-button" data-ttl-profile="off" type="button">OFF</button>
+                <button class="toggle-button" data-ttl-profile="shortest" type="button">0.5s</button>
+                <button class="toggle-button" data-ttl-profile="short" type="button">1s</button>
+                <button class="toggle-button" data-ttl-profile="medium" type="button">2s</button>
+                <button class="toggle-button" data-ttl-profile="steady" type="button">3s</button>
+                <button class="toggle-button" data-ttl-profile="long" type="button">5s</button>
+                <button class="toggle-button" data-ttl-profile="xlong" type="button">10s</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="manual-grid manual-command-row">
+            <label class="manual-field manual-command-field">
               Command
               <select id="command">
                 <option value="SET">SET</option>
                 <option value="GET">GET</option>
                 <option value="DEL">DEL</option>
+                <option value="HSET">HSET</option>
+                <option value="HGET">HGET</option>
+                <option value="HGETALL">HGETALL</option>
               </select>
             </label>
 
@@ -278,23 +300,18 @@
               <input id="key" name="key" placeholder="user:1" required />
             </label>
 
-            <div class="manual-field manual-toggle-field">
-              <span class="field-label">TTL</span>
-              <label class="toggle-row compact-toggle" for="manual-ttl-enabled">
-                <span>Redis TTL</span>
-                <input id="manual-ttl-enabled" type="checkbox" />
-              </label>
-            </div>
-          </div>
+            <label class="manual-field manual-field-name">
+              Field
+              <input id="field" name="field" placeholder="name" />
+            </label>
 
-          <div class="manual-grid manual-grid-bottom">
             <label class="manual-field manual-value">
               Value
-              <textarea id="value" name="value" rows="2" placeholder='{"name":"kim"}'></textarea>
+              <input id="value" name="value" placeholder='{"name":"kim"}' />
             </label>
 
             <div class="manual-run-wrap">
-              <button type="submit" class="primary-button manual-run-button">Run</button>
+              <button type="submit" class="secondary-button manual-send-button">Send</button>
             </div>
           </div>
         </form>
@@ -305,31 +322,34 @@
             <span class="panel-chip">async</span>
           </div>
 
-          <div class="scenario-grid">
-            <label>
+          <div class="scenario-top-row">
+            <label class="scenario-field">
               Users
               <input id="scenario-users" type="number" min="1" value="4" />
             </label>
 
-            <label>
+            <label class="scenario-field">
               Duration (seconds)
               <input id="scenario-duration" type="number" min="1" value="10" />
             </label>
+
+            <button id="reset-button" class="ghost-button" type="button">Reset</button>
           </div>
 
-          <label class="toggle-row compact-toggle">
-            <span>Redis TTL</span>
-            <input id="scenario-ttl-enabled" type="checkbox" />
-          </label>
+          <div class="scenario-action-stack">
+            <div class="scenario-read-row">
+              <button class="secondary-button scenario-button" data-scenario-id="read" data-read-hot-percent="0" type="button">Read 0%</button>
+              <button class="secondary-button scenario-button" data-scenario-id="read" data-read-hot-percent="20" type="button">Read 20%</button>
+              <button class="secondary-button scenario-button" data-scenario-id="read" data-read-hot-percent="40" type="button">Read 40%</button>
+              <button class="secondary-button scenario-button" data-scenario-id="read" data-read-hot-percent="60" type="button">Read 60%</button>
+              <button class="secondary-button scenario-button" data-scenario-id="read" data-read-hot-percent="80" type="button">Read 80%</button>
+              <button class="secondary-button scenario-button" data-scenario-id="read" data-read-hot-percent="100" type="button">Read 100%</button>
+            </div>
 
-          <div class="scenario-actions">
-            <button class="secondary-button" data-scenario-id="hot_key" type="button">
-              Run Hot Key
-            </button>
-            <button class="secondary-button" data-scenario-id="ttl_expiry" type="button">
-              Run TTL Expiry
-            </button>
-            <button id="reset-button" class="ghost-button" type="button">Reset</button>
+            <div class="scenario-bottom-row">
+              <button class="secondary-button scenario-button" data-scenario-id="write" type="button">Write</button>
+              <button class="secondary-button scenario-button" data-scenario-id="mixed" type="button">Mixed</button>
+            </div>
           </div>
         </section>
       </section>

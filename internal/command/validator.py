@@ -21,6 +21,8 @@ class CommandValidator:
         "DEL": 1,
         "EXPIRE": 2,
         "TTL": 1,
+        "DBSIZE": 0,
+        "FLUSHDB": 0,
         "HSET": 3,
         "HGET": 2,
         "HDEL": 2,
@@ -35,7 +37,9 @@ class CommandValidator:
     }
     _MIN_ARITY = {
         "PING": 0,
+        "INFO": 0,
         "CLIENT": 1,
+        "CONFIG": 2,
         "LPUSH": 2,
         "RPUSH": 2,
         "SADD": 2,
@@ -61,7 +65,7 @@ class CommandValidator:
             return
 
         if command.name == "EXPIRE":
-            seconds = self._validate_integer_argument(command.arguments[1])
+            seconds = self._validate_float_argument(command.arguments[1])
             if seconds <= 0:
                 raise CommandValidationError(ERR_INVALID_TTL)
 
@@ -86,6 +90,24 @@ class CommandValidator:
 
         if command.name == "PING" and len(command.arguments) > 1:
             raise CommandValidationError(ERR_WRONG_NUMBER_OF_ARGUMENTS)
+
+        if command.name == "INFO" and len(command.arguments) > 1:
+            raise CommandValidationError(ERR_WRONG_NUMBER_OF_ARGUMENTS)
+
+        if command.name == "CONFIG":
+            subcommand = command.arguments[0].upper()
+            if subcommand == "GET":
+                if len(command.arguments) != 2:
+                    raise CommandValidationError(ERR_WRONG_NUMBER_OF_ARGUMENTS)
+                return
+            if subcommand == "SET":
+                if len(command.arguments) != 3:
+                    raise CommandValidationError(ERR_WRONG_NUMBER_OF_ARGUMENTS)
+                value = self._validate_integer_argument(command.arguments[2])
+                if value < 0:
+                    raise CommandValidationError(ERR_INVALID_INTEGER)
+                return
+            raise CommandValidationError(ERR_UNSUPPORTED_COMMAND)
 
         if command.name == "CLIENT":
             subcommand = command.arguments[0].upper()

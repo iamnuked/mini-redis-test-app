@@ -5,10 +5,10 @@ import asyncio
 from internal.arena.events.history import EventHistory
 from internal.arena.gateway.models import ManualCommandInput, MessageResponse, ScenarioRunInput
 from internal.arena.gateway.service import ArenaGatewayService
-from internal.arena.lane.cache_policy import default_ttl_seconds
-from internal.arena.scenario.hot_key import build_hot_key_plan
 from internal.arena.scenario.reset import RESET_MESSAGE
-from internal.arena.scenario.ttl_expiry import build_ttl_expiry_plan
+from internal.arena.scenario.workloads import build_mixed_plan
+from internal.arena.scenario.workloads import build_read_plan
+from internal.arena.scenario.workloads import build_write_plan
 
 
 class ArenaScenarioRunner:
@@ -27,7 +27,7 @@ class ArenaScenarioRunner:
         task.add_done_callback(self._tasks.discard)
         return await self._gateway_service.publish_message(
             event_type="scenario_accepted",
-            message=f"Scenario accepted: {scenario_input.scenario_id}",
+            message=f"Scenario accepted: {self._scenario_label(scenario_input)}",
         )
 
     async def reset(self) -> MessageResponse:
@@ -45,19 +45,32 @@ class ArenaScenarioRunner:
         )
 
     async def _run_plan(self, scenario_input: ScenarioRunInput) -> None:
-        if scenario_input.scenario_id == "hot_key":
-            plan = build_hot_key_plan(
+        if scenario_input.scenario_id == "read":
+            plan = build_read_plan(
+                users=scenario_input.users,
+                duration_seconds=scenario_input.duration_seconds,
+                hot_percent=scenario_input.read_hot_percent or 60,
+            )
+        elif scenario_input.scenario_id == "write":
+            plan = build_write_plan(
                 users=scenario_input.users,
                 duration_seconds=scenario_input.duration_seconds,
             )
         else:
-            plan = build_ttl_expiry_plan(
+            plan = build_mixed_plan(
                 users=scenario_input.users,
                 duration_seconds=scenario_input.duration_seconds,
-                ttl_seconds=default_ttl_seconds(),
             )
 
-        for action in plan:
+        if plan.seed_documents:
+            await self._gateway_service.seed_state(
+                plan.seed_documents,
+                warm_cache=False,
+                ttl_enabled=False,
+                ttl_seconds=None,
+            )
+
+        for action in plan.actions:
             if action.delay_seconds > 0:
                 await asyncio.sleep(action.delay_seconds)
 
@@ -67,10 +80,16 @@ class ArenaScenarioRunner:
                     key=action.key,
                     value=action.value,
                     ttl_enabled=scenario_input.ttl_enabled,
+                    ttl_seconds=scenario_input.ttl_seconds,
                 )
             )
 
         await self._gateway_service.publish_message(
             event_type="scenario_finished",
-            message=f"Scenario finished: {scenario_input.scenario_id}",
+            message=f"Scenario finished: {self._scenario_label(scenario_input)}",
         )
+
+    def _scenario_label(self, scenario_input: ScenarioRunInput) -> str:
+        if scenario_input.scenario_id == "read":
+            return f"read {scenario_input.read_hot_percent or 60}%"
+        return scenario_input.scenario_id

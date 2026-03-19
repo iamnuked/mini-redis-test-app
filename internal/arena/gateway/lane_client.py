@@ -18,7 +18,13 @@ class ArenaLaneExecutor(Protocol):
     async def execute(self, request: ArenaRequest) -> LaneResult:
         ...
 
-    async def clear(self, keys: Iterable[str]) -> None:
+    async def clear(self, keys: Iterable[str], *, full_reset: bool = False) -> None:
+        ...
+
+    async def seed(self, seed_input: SeedStateInput) -> None:
+        ...
+
+    async def configure_memory(self, profile_key: str, max_memory_bytes: int) -> dict[str, Any]:
         ...
 
 
@@ -43,9 +49,19 @@ class ArenaLaneHttpClient:
         )
         return lane_result
 
-    async def clear(self, keys: Iterable[str]) -> None:
-        reset_input = ResetStateInput(keys=list(keys))
+    async def clear(self, keys: Iterable[str], *, full_reset: bool = False) -> None:
+        reset_input = ResetStateInput(keys=list(keys), full_reset=full_reset)
         await asyncio.to_thread(self._post_json, "/reset", reset_input.to_dict())
+
+    async def configure_memory(self, profile_key: str, max_memory_bytes: int) -> dict[str, Any]:
+        return await asyncio.to_thread(
+            self._post_json,
+            "/control/memory",
+            {
+                "profile_key": profile_key,
+                "max_memory_bytes": max_memory_bytes,
+            },
+        )
 
     async def seed(self, seed_input: SeedStateInput) -> None:
         await asyncio.to_thread(self._post_json, "/seed", seed_input.to_dict())

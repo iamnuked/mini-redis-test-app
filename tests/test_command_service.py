@@ -29,6 +29,15 @@ def create_command_service() -> CommandService:
     )
 
 
+def create_command_service_with_max_memory(max_memory_bytes: int) -> CommandService:
+    return CommandService(
+        clock=FakeClock(current_time=100.0),
+        store_repository=InMemoryStoreRepository(),
+        ttl_repository=InMemoryTtlRepository(),
+        max_memory_bytes=max_memory_bytes,
+    )
+
+
 def test_execute_set_returns_simple_string() -> None:
     service = create_command_service()
 
@@ -80,6 +89,61 @@ def test_execute_ttl_returns_number() -> None:
     response = service.execute(Command(name="TTL", arguments=("key",)))
 
     assert response == RespNumber(value=10)
+
+
+def test_execute_fractional_expire_expires_key() -> None:
+    clock = FakeClock(current_time=100.0)
+    service = CommandService(
+        clock=clock,
+        store_repository=InMemoryStoreRepository(),
+        ttl_repository=InMemoryTtlRepository(),
+    )
+    service.execute(Command(name="SET", arguments=("key", "value")))
+
+    response = service.execute(Command(name="EXPIRE", arguments=("key", "0.5")))
+    clock.advance(0.6)
+
+    assert response == RespNumber(value=1)
+    assert service.execute(Command(name="GET", arguments=("key",))) == RespNull()
+
+
+def test_execute_flushdb_and_dbsize_and_config_get_set() -> None:
+    service = create_command_service()
+    service.execute(Command(name="SET", arguments=("key", "value")))
+
+    config_get = service.execute(Command(name="CONFIG", arguments=("GET", "maxmemory")))
+    size_before = service.execute(Command(name="DBSIZE", arguments=()))
+    info = service.execute(Command(name="INFO", arguments=("MEMORY",)))
+    config_set = service.execute(Command(name="CONFIG", arguments=("SET", "maxmemory", "256")))
+    flushdb = service.execute(Command(name="FLUSHDB", arguments=()))
+    size_after = service.execute(Command(name="DBSIZE", arguments=()))
+
+    assert config_get == RespArray(
+        items=(
+            RespBlobString(value="maxmemory"),
+            RespBlobString(value="0"),
+        )
+    )
+    assert size_before == RespNumber(value=1)
+    assert info == RespBlobString(
+        value="# Memory\r\nused_memory:8\r\nmaxmemory:0\r\nkeys:1\r\nevicted_keys:0"
+    )
+    assert config_set == RespSimpleString(value=RESP_OK)
+    assert flushdb == RespSimpleString(value=RESP_OK)
+    assert size_after == RespNumber(value=0)
+
+
+def test_execute_eviction_keeps_recent_keys_when_max_memory_is_hit() -> None:
+    service = create_command_service_with_max_memory(max_memory_bytes=10)
+
+    service.execute(Command(name="SET", arguments=("a", "1234")))
+    service.execute(Command(name="SET", arguments=("b", "1234")))
+    service.execute(Command(name="SET", arguments=("c", "1234")))
+
+    assert service.execute(Command(name="GET", arguments=("a",))) == RespNull()
+    assert service.execute(Command(name="GET", arguments=("b",))) == RespBlobString(value="1234")
+    assert service.execute(Command(name="GET", arguments=("c",))) == RespBlobString(value="1234")
+    assert service.execute(Command(name="DBSIZE", arguments=())) == RespNumber(value=2)
 
 
 def test_execute_rejects_unsupported_command() -> None:

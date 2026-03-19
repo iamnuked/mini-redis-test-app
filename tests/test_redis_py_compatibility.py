@@ -84,3 +84,30 @@ def test_redis_py_resp3_connection_supports_ping_and_hash_commands() -> None:
         client.close()
         server.stop()
         thread.join(timeout=2)
+
+
+def test_redis_py_execute_command_supports_memory_controls() -> None:
+    port = find_free_port()
+    config = build_runtime_config(port)
+    server, thread = run_server_in_thread(config)
+
+    try:
+        client = redis.Redis(host=config.host, port=config.port, decode_responses=True)
+
+        assert client.execute_command("CONFIG", "SET", "maxmemory", "24") == "OK"
+        config_get = client.execute_command("CONFIG", "GET", "maxmemory")
+        if isinstance(config_get, dict):
+            assert config_get["maxmemory"] == "24"
+        else:
+            assert config_get[1] == "24"
+        assert client.execute_command("SET", "alpha", "value-1") is True
+        info = client.execute_command("INFO", "MEMORY")
+        assert int(info["maxmemory"]) == 24
+        assert int(info["used_memory"]) > 0
+        assert int(client.execute_command("DBSIZE")) >= 1
+        assert client.execute_command("FLUSHDB") in {"OK", True}
+        assert int(client.execute_command("DBSIZE")) == 0
+    finally:
+        client.close()
+        server.stop()
+        thread.join(timeout=2)

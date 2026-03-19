@@ -28,6 +28,7 @@ class RuntimeConfigTest(unittest.TestCase):
         self.assertEqual(config.max_array_items, defaults.DEFAULT_MAX_ARRAY_ITEMS)
         self.assertEqual(config.max_resp_depth, defaults.DEFAULT_MAX_RESP_DEPTH)
         self.assertEqual(config.max_blob_size_bytes, defaults.DEFAULT_MAX_BLOB_SIZE_BYTES)
+        self.assertEqual(config.max_memory_bytes, defaults.DEFAULT_MAX_MEMORY_BYTES)
         self.assertEqual(
             config.expiration_sweep_interval_seconds,
             defaults.DEFAULT_EXPIRATION_SWEEP_INTERVAL_SECONDS,

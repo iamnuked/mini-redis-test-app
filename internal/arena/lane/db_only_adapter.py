@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import time
 from typing import Iterable
 
 from internal.arena.gateway.models import ArenaRequest, CacheResult, LaneResult
 from internal.arena.gateway.models import LaneMetrics
+from internal.arena.gateway.models import SeedStateInput
 from internal.arena.mongo.repository import ArenaRepository
 
 
@@ -26,6 +28,11 @@ class DBOnlyLaneAdapter:
         if deleted:
             return ("deleted", "deleted")
         return ("not found", "not_found")
+
+    def _serialize_hash(self, fields: dict[str, str] | None) -> str | None:
+        if fields is None:
+            return None
+        return json.dumps(fields, separators=(",", ":"), sort_keys=True)
 
     async def execute(self, request: ArenaRequest) -> LaneResult:
         started_at = time.perf_counter()
@@ -58,6 +65,44 @@ class DBOnlyLaneAdapter:
                     storage_changes.append("Mongo document missing")
                 else:
                     storage_changes.append("Mongo document read")
+                answer_text, answer_kind = self._get_answer(value_preview)
+
+            elif request.command == "HSET":
+                db_started_at = time.perf_counter()
+                write_state = self._repository.hset(
+                    request.key,
+                    request.field or "",
+                    request.value or "",
+                )
+                db_time_ms += (time.perf_counter() - db_started_at) * 1000
+                path.append("mongo_write")
+                storage_changes.append(f"Mongo hash field {write_state}")
+                value_preview = request.value
+                answer_text, answer_kind = self._set_answer()
+
+            elif request.command == "HGET":
+                path.append("mongo_read")
+                mongo_reads = 1
+                db_started_at = time.perf_counter()
+                value_preview = self._repository.hget(request.key, request.field or "")
+                db_time_ms += (time.perf_counter() - db_started_at) * 1000
+                if value_preview is None:
+                    storage_changes.append("Mongo hash field missing")
+                else:
+                    storage_changes.append("Mongo hash field read")
+                answer_text, answer_kind = self._get_answer(value_preview)
+
+            elif request.command == "HGETALL":
+                path.append("mongo_read")
+                mongo_reads = 1
+                db_started_at = time.perf_counter()
+                fields = self._repository.hgetall(request.key)
+                db_time_ms += (time.perf_counter() - db_started_at) * 1000
+                value_preview = self._serialize_hash(fields)
+                if fields is None:
+                    storage_changes.append("Mongo hash missing")
+                else:
+                    storage_changes.append("Mongo hash read")
                 answer_text, answer_kind = self._get_answer(value_preview)
 
             elif request.command == "DEL":
@@ -110,5 +155,12 @@ class DBOnlyLaneAdapter:
                 ),
             )
 
-    def clear(self, keys: Iterable[str]) -> None:
+    def clear(self, keys: Iterable[str], *, full_reset: bool = False) -> None:
+        if full_reset:
+            self._repository.clear()
+            return
         self._repository.delete_many(keys)
+
+    async def seed(self, seed_input: SeedStateInput) -> None:
+        if seed_input.documents:
+            self._repository.seed(seed_input.documents)

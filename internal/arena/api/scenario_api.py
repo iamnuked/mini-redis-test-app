@@ -11,10 +11,12 @@ router = APIRouter()
 
 
 class ScenarioRunPayload(BaseModel):
-    scenario_id: Literal["hot_key", "ttl_expiry"]
+    scenario_id: Literal["read", "write", "mixed"] = "read"
     users: int = Field(default=4, ge=1)
     duration_seconds: int = Field(default=10, ge=1)
-    ttl_enabled: bool = False
+    read_hot_percent: Literal[0, 20, 40, 60, 80, 100] | None = None
+    ttl_enabled: bool = True
+    ttl_seconds: float | None = Field(default=None, gt=0)
 
 
 @router.post("/api/scenarios/run")
@@ -25,7 +27,9 @@ async def run_scenario(payload: ScenarioRunPayload, request: Request) -> dict:
             scenario_id=payload.scenario_id,
             users=payload.users,
             duration_seconds=payload.duration_seconds,
+            read_hot_percent=payload.read_hot_percent,
             ttl_enabled=payload.ttl_enabled,
+            ttl_seconds=payload.ttl_seconds,
         )
     )
     return response.to_dict()

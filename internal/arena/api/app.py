@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
+import os
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from internal.arena.api.control_api import router as control_router
 from internal.arena.api.events_api import router as events_router
 from internal.arena.api.health_api import router as health_router
 from internal.arena.api.manual_command_api import router as manual_command_router
@@ -15,7 +18,9 @@ from internal.arena.gateway.lane_client import ArenaLaneClientSettings
 from internal.arena.gateway.lane_client import ArenaLaneHttpClient
 from internal.arena.gateway.service import ArenaGatewayService
 from internal.arena.scenario.runner import ArenaScenarioRunner
-import os
+
+
+logger = logging.getLogger(__name__)
 
 
 def create_app() -> FastAPI:
@@ -57,8 +62,22 @@ def create_app() -> FastAPI:
     app.state.db_only_lane_client = db_only_lane_client
     app.state.scenario_runner = scenario_runner
 
+    reset_on_start = os.getenv("ARENA_RESET_ON_START", "0").lower() in {"1", "true", "yes", "on"}
+
+    @app.on_event("startup")
+    async def initialize_gateway_state() -> None:
+        try:
+            if reset_on_start:
+                await gateway_service.reset_state()
+                event_history.clear()
+                return
+            await gateway_service.initialize()
+        except Exception:
+            logger.exception("Arena gateway startup synchronization failed.")
+
     app.include_router(manual_command_router)
     app.include_router(scenario_router)
+    app.include_router(control_router)
     app.include_router(events_router)
     app.include_router(health_router)
 

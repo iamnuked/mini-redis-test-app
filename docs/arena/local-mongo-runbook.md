@@ -110,6 +110,8 @@ curl http://127.0.0.1:8200/api/health
 - `redis_lane.mongo.backend == "pymongo"`
 - `db_only_lane.mongo.backend == "pymongo"`
 - `redis_lane.redis_backend == "redis_py"`
+- `redis_lane.storage.redis.max_memory_bytes`가 현재 Redis logical max memory다.
+- `controls.memory.selected`와 `controls.ttl.selected`가 현재 실험 profile이다.
 
 ## 8. 검증 예시
 
@@ -117,6 +119,22 @@ curl http://127.0.0.1:8200/api/health
 
 ```bash
 curl -X POST http://127.0.0.1:8200/api/scenarios/reset
+```
+
+메모리 프로필 변경:
+
+```bash
+curl -X POST http://127.0.0.1:8200/api/controls/memory-profile \
+  -H 'Content-Type: application/json' \
+  -d '{"profile_key":"small"}'
+```
+
+TTL 프로필 변경:
+
+```bash
+curl -X POST http://127.0.0.1:8200/api/controls/ttl-profile \
+  -H 'Content-Type: application/json' \
+  -d '{"profile_key":"short"}'
 ```
 
 수동 `SET`:
@@ -137,6 +155,23 @@ curl -X POST http://127.0.0.1:8200/api/manual-command \
 
 여기서 `redis_db.path`가 `["redis_read","redis_hit"]`로 나오면 warm cache가 정상이다.
 
+TTL 만료 후 Redis 저장량 감소 확인:
+
+```bash
+curl -X POST http://127.0.0.1:8200/api/controls/ttl-profile \
+  -H 'Content-Type: application/json' \
+  -d '{"profile_key":"short"}'
+
+curl -X POST http://127.0.0.1:8200/api/manual-command \
+  -H 'Content-Type: application/json' \
+  -d '{"command":"SET","key":"ttl:1","value":"A","ttl_enabled":true}'
+
+sleep 4
+curl http://127.0.0.1:8200/api/health
+```
+
+이 시점에는 `redis_lane.storage.redis.logical_bytes == 0`이고 Mongo logical bytes는 남아 있어야 한다.
+
 ## 9. Mongo 분리 확인
 
 ```bash
@@ -155,7 +190,9 @@ PY
 
 ## 10. 주의사항
 
-- 기본 TTL은 `5초`다.
-- `ttl_enabled=true`인 경우 `SET` 후 첫 `GET`을 늦게 보내면 Redis miss가 정상적으로 발생할 수 있다.
+- 기본 TTL profile은 `medium(5초)`다.
+- `Reset`은 full arena reset이다.
+- memory profile은 reset 이후 변경할 수 있고, 첫 manual/scenario 실행부터 lock된다.
+- `ttl_enabled=true`인 경우 현재 선택된 TTL profile이 적용된다.
 - warm hit를 확인할 때는 `ttl_enabled=false`로 보거나, TTL 내에 연속 `GET`을 보내야 한다.
 - 같은 머신에서 돌리기 때문에 절대 성능 수치보다는 상대 비교와 경로 차이에 더 의미가 있다.

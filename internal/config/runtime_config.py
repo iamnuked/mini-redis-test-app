@@ -16,6 +16,7 @@ class RuntimeConfig:
     max_array_items: int
     max_resp_depth: int
     max_blob_size_bytes: int
+    max_memory_bytes: int
     expiration_sweep_interval_seconds: int
     expiration_sweep_batch_size: int
     expiration_sweep_enabled: bool
@@ -36,6 +37,7 @@ class RuntimeConfig:
             max_array_items=defaults.DEFAULT_MAX_ARRAY_ITEMS,
             max_resp_depth=defaults.DEFAULT_MAX_RESP_DEPTH,
             max_blob_size_bytes=defaults.DEFAULT_MAX_BLOB_SIZE_BYTES,
+            max_memory_bytes=defaults.DEFAULT_MAX_MEMORY_BYTES,
             expiration_sweep_interval_seconds=(
                 defaults.DEFAULT_EXPIRATION_SWEEP_INTERVAL_SECONDS
             ),

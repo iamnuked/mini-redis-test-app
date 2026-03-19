@@ -34,10 +34,10 @@ def test_validate_rejects_wrong_arity() -> None:
         validator.validate(Command(name="GET", arguments=("key", "extra")))
 
 
-def test_validate_rejects_non_integer_expire() -> None:
+def test_validate_rejects_non_numeric_expire() -> None:
     validator = CommandValidator()
 
-    with pytest.raises(CommandValidationError, match=ERR_INVALID_INTEGER):
+    with pytest.raises(CommandValidationError, match=ERR_INVALID_FLOAT):
         validator.validate(Command(name="EXPIRE", arguments=("key", "abc")))
 
 
@@ -46,6 +46,12 @@ def test_validate_rejects_non_positive_expire() -> None:
 
     with pytest.raises(CommandValidationError, match=ERR_INVALID_TTL):
         validator.validate(Command(name="EXPIRE", arguments=("key", "0")))
+
+
+def test_validate_accepts_fractional_expire() -> None:
+    validator = CommandValidator()
+
+    validator.validate(Command(name="EXPIRE", arguments=("key", "0.5")))
 
 
 def test_validate_accepts_variadic_list_command() -> None:
@@ -79,6 +85,13 @@ def test_validate_accepts_ping_without_arguments() -> None:
     validator = CommandValidator()
 
     validator.validate(Command(name="PING", arguments=()))
+
+
+def test_validate_accepts_config_get_and_flushdb() -> None:
+    validator = CommandValidator()
+
+    validator.validate(Command(name="CONFIG", arguments=("GET", "maxmemory")))
+    validator.validate(Command(name="FLUSHDB", arguments=()))
 
 
 def test_validate_accepts_select_with_db_index() -> None:

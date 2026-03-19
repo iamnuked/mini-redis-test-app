@@ -3,7 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import os
 from typing import Iterable
+from typing import Literal
 from typing import Protocol
+
+from internal.arena.common.models import WRONG_TYPE_MESSAGE
 
 
 class ArenaRepository(Protocol):
@@ -11,6 +14,15 @@ class ArenaRepository(Protocol):
         ...
 
     def read(self, key: str) -> str | None:
+        ...
+
+    def hset(self, key: str, field_name: str, value: str) -> str:
+        ...
+
+    def hget(self, key: str, field_name: str) -> str | None:
+        ...
+
+    def hgetall(self, key: str) -> dict[str, str] | None:
         ...
 
     def delete(self, key: str) -> bool:
@@ -26,6 +38,9 @@ class ArenaRepository(Protocol):
         ...
 
     def healthcheck(self) -> dict[str, str]:
+        ...
+
+    def stats(self) -> dict[str, int]:
         ...
 
 
@@ -56,17 +71,59 @@ class MongoRepositorySettings:
 
 
 @dataclass
+class ArenaDocument:
+    kind: Literal["string", "hash"]
+    value: str | None = None
+    fields: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
 class InMemoryMongoRepository:
     name: str
-    _documents: dict[str, str] = field(default_factory=dict)
+    _documents: dict[str, ArenaDocument] = field(default_factory=dict)
 
     def write(self, key: str, value: str) -> str:
         created = key not in self._documents
-        self._documents[key] = value
+        self._documents[key] = ArenaDocument(kind="string", value=value)
         return "created" if created else "updated"
 
     def read(self, key: str) -> str | None:
-        return self._documents.get(key)
+        document = self._documents.get(key)
+        if document is None:
+            return None
+        if document.kind != "string":
+            raise TypeError(WRONG_TYPE_MESSAGE)
+        return document.value
+
+    def hset(self, key: str, field_name: str, value: str) -> str:
+        document = self._documents.get(key)
+        if document is None:
+            self._documents[key] = ArenaDocument(
+                kind="hash",
+                fields={field_name: value},
+            )
+            return "created"
+        if document.kind != "hash":
+            raise TypeError(WRONG_TYPE_MESSAGE)
+        field_created = field_name not in document.fields
+        document.fields[field_name] = value
+        return "created" if field_created else "updated"
+
+    def hget(self, key: str, field_name: str) -> str | None:
+        document = self._documents.get(key)
+        if document is None:
+            return None
+        if document.kind != "hash":
+            raise TypeError(WRONG_TYPE_MESSAGE)
+        return document.fields.get(field_name)
+
+    def hgetall(self, key: str) -> dict[str, str] | None:
+        document = self._documents.get(key)
+        if document is None:
+            return None
+        if document.kind != "hash":
+            raise TypeError(WRONG_TYPE_MESSAGE)
+        return dict(document.fields)
 
     def delete(self, key: str) -> bool:
         if key not in self._documents:
@@ -82,10 +139,27 @@ class InMemoryMongoRepository:
         self._documents.clear()
 
     def seed(self, documents: dict[str, str]) -> None:
-        self._documents.update(documents)
+        for key, value in documents.items():
+            self._documents[key] = ArenaDocument(kind="string", value=value)
 
     def healthcheck(self) -> dict[str, str]:
         return {"backend": "inmemory", "name": self.name, "status": "ok"}
+
+    def stats(self) -> dict[str, int]:
+        logical_bytes = 0
+        for key, document in self._documents.items():
+            logical_bytes += len(key.encode("utf-8"))
+            if document.kind == "string":
+                logical_bytes += len((document.value or "").encode("utf-8"))
+            else:
+                logical_bytes += sum(
+                    len(field_name.encode("utf-8")) + len(field_value.encode("utf-8"))
+                    for field_name, field_value in document.fields.items()
+                )
+        return {
+            "logical_bytes": logical_bytes,
+            "document_count": len(self._documents),
+        }
 
 
 @dataclass
@@ -110,10 +184,11 @@ class PyMongoArenaRepository:
         return pymongo
 
     def write(self, key: str, value: str) -> str:
-        created = self.read(key) is None
+        document = self._collection.find_one({"_id": key}, {"_id": 1})
+        created = document is None
         self._collection.replace_one(
             {"_id": key},
-            {"_id": key, "value": value},
+            {"_id": key, "kind": "string", "value": value},
             upsert=True,
         )
         return "created" if created else "updated"
@@ -122,7 +197,52 @@ class PyMongoArenaRepository:
         document = self._collection.find_one({"_id": key})
         if document is None:
             return None
+        if document.get("kind", "string") != "string":
+            raise TypeError(WRONG_TYPE_MESSAGE)
         return document.get("value")
+
+    def hset(self, key: str, field_name: str, value: str) -> str:
+        document = self._collection.find_one({"_id": key})
+        if document is None:
+            self._collection.replace_one(
+                {"_id": key},
+                {"_id": key, "kind": "hash", "fields": {field_name: value}},
+                upsert=True,
+            )
+            return "created"
+        if document.get("kind", "string") != "hash":
+            raise TypeError(WRONG_TYPE_MESSAGE)
+        fields = dict(document.get("fields", {}))
+        field_created = field_name not in fields
+        self._collection.update_one(
+            {"_id": key},
+            {
+                "$set": {
+                    "kind": "hash",
+                    f"fields.{field_name}": value,
+                },
+                "$unset": {"value": ""},
+            },
+        )
+        return "created" if field_created else "updated"
+
+    def hget(self, key: str, field_name: str) -> str | None:
+        document = self._collection.find_one({"_id": key})
+        if document is None:
+            return None
+        if document.get("kind", "string") != "hash":
+            raise TypeError(WRONG_TYPE_MESSAGE)
+        fields = document.get("fields", {})
+        return fields.get(field_name)
+
+    def hgetall(self, key: str) -> dict[str, str] | None:
+        document = self._collection.find_one({"_id": key})
+        if document is None:
+            return None
+        if document.get("kind", "string") != "hash":
+            raise TypeError(WRONG_TYPE_MESSAGE)
+        fields = document.get("fields", {})
+        return {str(field_name): str(field_value) for field_name, field_value in fields.items()}
 
     def delete(self, key: str) -> bool:
         result = self._collection.delete_one({"_id": key})
@@ -143,7 +263,7 @@ class PyMongoArenaRepository:
         operations = [
             self._pymongo.ReplaceOne(
                 {"_id": key},
-                {"_id": key, "value": value},
+                {"_id": key, "kind": "string", "value": value},
                 upsert=True,
             )
             for key, value in documents.items()
@@ -157,6 +277,26 @@ class PyMongoArenaRepository:
             "db_name": self.settings.db_name,
             "collection_name": self.settings.collection_name,
             "status": "ok",
+        }
+
+    def stats(self) -> dict[str, int]:
+        cursor = self._collection.find({}, {"_id": 1, "kind": 1, "value": 1, "fields": 1})
+        documents = list(cursor)
+        logical_bytes = 0
+        for document in documents:
+            logical_bytes += len(str(document.get("_id", "")).encode("utf-8"))
+            if document.get("kind", "string") == "hash":
+                fields = document.get("fields", {})
+                logical_bytes += sum(
+                    len(str(field_name).encode("utf-8"))
+                    + len(str(field_value).encode("utf-8"))
+                    for field_name, field_value in fields.items()
+                )
+            else:
+                logical_bytes += len(str(document.get("value", "")).encode("utf-8"))
+        return {
+            "logical_bytes": logical_bytes,
+            "document_count": len(documents),
         }
 
 

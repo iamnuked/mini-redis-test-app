@@ -11,16 +11,25 @@ router = APIRouter()
 
 
 class ManualCommandPayload(BaseModel):
-    command: Literal["SET", "GET", "DEL"]
+    command: Literal["SET", "GET", "DEL", "HSET", "HGET", "HGETALL"]
     key: str = Field(min_length=1)
+    field: str | None = None
     value: str | None = None
     ttl_enabled: bool = False
 
     @model_validator(mode="after")
     def validate_payload(self) -> "ManualCommandPayload":
-        if self.command == "SET" and self.value is None:
-            raise ValueError("SET requires a value")
-        if self.command != "SET":
+        requires_field = self.command in {"HSET", "HGET"}
+        requires_value = self.command in {"SET", "HSET"}
+
+        if requires_field and not self.field:
+            raise ValueError(f"{self.command} requires a field")
+        if not requires_field:
+            self.field = None
+
+        if requires_value and self.value is None:
+            raise ValueError(f"{self.command} requires a value")
+        if not requires_value:
             self.value = None
         return self
 
@@ -32,6 +41,7 @@ async def run_manual_command(payload: ManualCommandPayload, request: Request) ->
         ManualCommandInput(
             command=payload.command,
             key=payload.key,
+            field=payload.field,
             value=payload.value,
             ttl_enabled=payload.ttl_enabled,
         )

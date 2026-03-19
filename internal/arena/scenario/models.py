@@ -14,6 +14,12 @@ class ScenarioAction:
 
 
 @dataclass
+class ScenarioPlan:
+    actions: list[ScenarioAction]
+    seed_documents: dict[str, str]
+
+
+@dataclass
 class ScenarioDescriptor:
     scenario_id: ScenarioId
     title: str

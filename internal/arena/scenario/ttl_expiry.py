@@ -6,7 +6,7 @@ from internal.arena.scenario.models import ScenarioAction
 def build_ttl_expiry_plan(
     users: int,
     duration_seconds: int,
-    ttl_seconds: int,
+    ttl_seconds: float,
 ) -> list[ScenarioAction]:
     warmup_reads = max(users, 1)
     post_expiry_reads = max(duration_seconds // 2, 1)
